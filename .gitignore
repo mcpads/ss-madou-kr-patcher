@@ -1,0 +1,11 @@
+/target
+roms/
+out/
+*.bin
+*.bps
+*.iso
+*.pyc
+__pycache__/
+.DS_Store
+.claude/
+.worktrees/
