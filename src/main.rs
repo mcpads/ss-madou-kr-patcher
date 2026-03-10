@@ -192,6 +192,15 @@ enum Commands {
         /// Font size for battle UI sprite rendering.
         #[arg(long, default_value = "8.0")]
         battle_ui_font_size: f32,
+        /// Path to TTF font for battle menu tab sprites. Use --no-menu-tabs to skip.
+        #[arg(long, default_value = "assets/fonts/Galmuri9.ttf")]
+        menu_tab_font: PathBuf,
+        /// Skip battle menu tab sprite patching.
+        #[arg(long)]
+        no_menu_tabs: bool,
+        /// Font size for menu tab sprite rendering.
+        #[arg(long, default_value = "10.0")]
+        menu_tab_font_size: f32,
     },
     /// Recompress SEQ file(s) without text changes (CNX compressor isolation test).
     TestRecompress {
@@ -326,6 +335,9 @@ fn main() -> Result<()> {
             battle_ui_font,
             no_battle_ui,
             battle_ui_font_size,
+            menu_tab_font,
+            no_menu_tabs,
+            menu_tab_font_size,
         } => {
             let final_output = match output_dir {
                 Some(dir) => dir.join(output.file_name().unwrap_or(std::ffi::OsStr::new("Madou_Monogatari_KO.bin"))),
@@ -333,12 +345,14 @@ fn main() -> Result<()> {
             };
             let pf = if no_prologue { None } else { Some(prologue_font.as_path()) };
             let bf = if no_battle_ui { None } else { Some(battle_ui_font.as_path()) };
+            let mf = if no_menu_tabs { None } else { Some(menu_tab_font.as_path()) };
             commands::build::cmd_build_rom(
                 &rom, &font, &final_output, &translations_dir, font_size,
                 &only_seq, &except_seq, skip_seq,
                 dump_seq, dump_ptrs, skip_common_ptrs, skip_script_ptrs,
                 pf, prologue_font_size,
                 bf, battle_ui_font_size,
+                mf, menu_tab_font_size,
             )
         }
         Commands::TestRecompress {

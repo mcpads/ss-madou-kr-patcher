@@ -695,32 +695,31 @@ pub fn patch_prologue_sprite(
 // Battle UI sprite patch (SYSTEM.SPR)
 // ---------------------------------------------------------------------------
 
-/// Patch battle UI kanji tiles in SYSTEM.SPR with Korean labels.
+/// Patch SYSTEM.SPR: battle UI kanji tiles + menu tab sprites in a single pass.
 ///
-/// Decompresses SYSTEM.SPR, patches 6 tiles (16×16 4bpp) in-place at
-/// 0x7800–0x7B00, then recompresses and writes back to disc.
-pub fn patch_battle_ui_sprite(
+/// Decompresses SYSTEM.SPR once, applies both battle UI tile patches (16×16
+/// 4bpp at 0x7800–0x7B00) and menu tab sprite patches (40×20 sel + 40×14
+/// unsel × 6), then recompresses and writes back to disc once.
+pub fn patch_system_sprite(
     ctx: &mut DiscCtx,
-    battle_ui_font_path: &Path,
+    battle_ui_font_path: Option<&Path>,
     battle_ui_font_size: f32,
+    menu_tab_font_path: Option<&Path>,
+    menu_tab_font_size: f32,
 ) -> Result<()> {
+    use crate::font::battle_menu;
     use crate::font::battle_ui;
 
     const SPR_NAME: &str = "SYSTEM.SPR";
 
-    println!("\nPatching battle UI sprite ({})...", SPR_NAME);
+    // Nothing to do if both are disabled.
+    if battle_ui_font_path.is_none() && menu_tab_font_path.is_none() {
+        return Ok(());
+    }
 
-    // Load font
-    let ttf_data = std::fs::read(battle_ui_font_path)
-        .context(format!("Failed to read battle UI font: {}", battle_ui_font_path.display()))?;
-    let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
-    println!(
-        "  Battle UI font: {} ({}px)",
-        battle_ui_font_path.display(),
-        battle_ui_font_size
-    );
+    println!("\nPatching SYSTEM.SPR...");
 
-    // Extract and decompress original SYSTEM.SPR
+    // Extract and decompress once.
     let spr_entry = ctx
         .iso
         .find_file(ctx.disc.disc(), SPR_NAME)?
@@ -740,23 +739,32 @@ pub fn patch_battle_ui_sprite(
     let mut spr_data = compression::decompress(&original_compressed)?;
     println!("  Decompressed: {} bytes", spr_data.len());
 
-    // Patch the 6 battle UI tiles
-    let patched_count = battle_ui::patch_battle_tiles(&mut spr_data, &font, battle_ui_font_size);
-    println!(
-        "  Patched {} battle UI tiles ({} bytes each)",
-        patched_count,
-        battle_ui::TILE_BYTES
-    );
+    // Battle UI tiles (攻防命動運全 → 공격/방어/명중/동작/행운/전체).
+    if let Some(bf) = battle_ui_font_path {
+        let ttf_data = std::fs::read(bf)
+            .context(format!("Failed to read battle UI font: {}", bf.display()))?;
+        let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
+        println!("  Battle UI font: {} ({}px)", bf.display(), battle_ui_font_size);
 
-    // Recompress
+        let count = battle_ui::patch_battle_tiles(&mut spr_data, &font, battle_ui_font_size);
+        println!("  Patched {} battle UI tiles ({} bytes each)", count, battle_ui::TILE_BYTES);
+    }
+
+    // Menu tab sprites (アイテム…にげる → 아이템…도망).
+    if let Some(mf) = menu_tab_font_path {
+        let ttf_data = std::fs::read(mf)
+            .context(format!("Failed to read menu tab font: {}", mf.display()))?;
+        let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
+        println!("  Menu tab font: {} ({}px)", mf.display(), menu_tab_font_size);
+
+        let count = battle_menu::patch_menu_tabs(&mut spr_data, &font, menu_tab_font_size);
+        println!("  Patched {} menu tab pairs (selected + unselected)", count);
+    }
+
+    // Compress once and write once.
     let compressed = compression::compress(&spr_data, &original_header.subtype);
-    println!(
-        "  Compressed: {} -> {} bytes",
-        spr_data.len(),
-        compressed.len()
-    );
+    println!("  Compressed: {} -> {} bytes", spr_data.len(), compressed.len());
 
-    // Round-trip verify
     let verify = compression::decompress(&compressed)?;
     if verify == spr_data {
         println!("  CNX round-trip: PASS");
@@ -769,7 +777,6 @@ pub fn patch_battle_ui_sprite(
         );
     }
 
-    // Write back to disc
     let relocated = write_compressed_file(
         ctx,
         SPR_NAME,
@@ -788,10 +795,7 @@ pub fn patch_battle_ui_sprite(
     } else if compressed.len() <= original_compressed.len() {
         println!(
             "  Wrote {} in place at LBA {} (padded {} → {})",
-            SPR_NAME,
-            spr_entry.lba,
-            compressed.len(),
-            original_compressed.len()
+            SPR_NAME, spr_entry.lba, compressed.len(), original_compressed.len()
         );
     } else {
         println!(

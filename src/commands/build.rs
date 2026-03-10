@@ -835,6 +835,8 @@ fn build_stage_finalize(
     prologue_font_size: f32,
     battle_ui_font: Option<&Path>,
     battle_ui_font_size: f32,
+    menu_tab_font: Option<&Path>,
+    menu_tab_font_size: f32,
 ) -> Result<()> {
     // Patch 1ST_READ.BIN: relocate decompression buffer + update descriptor size
     // + update SEQ decompressed size table.
@@ -859,10 +861,14 @@ fn build_stage_finalize(
         pipeline::patch_prologue_sprite(ctx, pf, prologue_font_size)?;
     }
 
-    // Patch battle UI sprite (SYSTEM.SPR) if font is provided.
-    if let Some(bf) = battle_ui_font {
-        pipeline::patch_battle_ui_sprite(ctx, bf, battle_ui_font_size)?;
-    }
+    // Patch SYSTEM.SPR (battle UI tiles + menu tab sprites) in a single pass.
+    pipeline::patch_system_sprite(
+        ctx,
+        battle_ui_font,
+        battle_ui_font_size,
+        menu_tab_font,
+        menu_tab_font_size,
+    )?;
 
     // Save (includes EDC/ECC regeneration).
     pipeline::save_disc(ctx, output)?;
@@ -920,6 +926,8 @@ pub(crate) fn cmd_build_rom(
     prologue_font_size: f32,
     battle_ui_font: Option<&Path>,
     battle_ui_font_size: f32,
+    menu_tab_font: Option<&Path>,
+    menu_tab_font_size: f32,
 ) -> Result<()> {
     // Build patch options from CLI flags, falling back to env vars.
     let mut patch_opts = patcher::PatchOptions::from_env();
@@ -978,6 +986,7 @@ pub(crate) fn cmd_build_rom(
         &mut ctx, &font_ctx, &alloc, &seq_result,
         rom, output, prologue_font, prologue_font_size,
         battle_ui_font, battle_ui_font_size,
+        menu_tab_font, menu_tab_font_size,
     )?;
 
     Ok(())
