@@ -23,6 +23,8 @@ cargo test
 | 대화 폰트 | `assets/fonts/Galmuri11.ttf` | 16x16 한글 폰트 TTF (`-f` 플래그로 변경) |
 | 프롤로그 폰트 | `assets/fonts/MaplestoryBold.ttf` | 프롤로그 스프라이트용 (`--prologue-font`) |
 | 전투 UI 폰트 | `assets/fonts/dalmoori.ttf` | 8px 전투 UI용 (`--battle-ui-font`) |
+| 메뉴 탭 폰트 | `assets/fonts/Galmuri9.ttf` | 배틀 메뉴 탭용 (`--menu-tab-font`) |
+| 레벨업 폰트 | `assets/fonts/MaplestoryBold.ttf` | 레벨업 스프라이트용 (`--levelup-font`) |
 
 ### 실행
 
@@ -35,7 +37,7 @@ cargo run -- build-rom -O out/debug/                    # 출력 디렉터리
 cargo run -- build-rom -f path/to/font.ttf              # 대화 폰트 변경
 cargo run -- build-rom --only-seq MP0101                 # 특정 SEQ만
 cargo run -- build-rom --skip-seq                        # 폰트만 패치
-cargo run -- build-rom --no-prologue --no-battle-ui      # 스프라이트 패치 스킵
+cargo run -- build-rom --no-prologue --no-battle-ui --no-menu-tabs --no-levelup  # 스프라이트 패치 스킵
 ```
 
 ### 출력

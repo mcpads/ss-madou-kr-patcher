@@ -34,7 +34,7 @@ cargo run              # 실행
   - `src/compression/` — CNX v2 컴프레서/디컴프레서
   - `src/disc/` — ISO 9660, TrackedDisc, BPS, EDC/ECC, 섹터 핸들링
   - `src/disasm/` — SH-2 재귀/리니어 디스어셈블러, xref, 콜그래프
-  - `src/font/` — TTF → 4bpp 글리프 생성, 프롤로그/배틀 UI 스프라이트 렌더러
+  - `src/font/` — TTF → 4bpp 글리프 생성, 프롤로그/배틀 UI/메뉴 탭/레벨업 스프라이트 렌더러
   - `src/text/` — SEQ 파서, 텍스트 패칭, 포인터 수정, 글리프 할당, 오버플로우 검사
   - `src/sh2/` — SH-2 명령어 디코딩/표시
   - `src/output/` — 디스어셈블리 출력 포맷
@@ -123,6 +123,16 @@ cargo run -- build-rom --prologue-font-size 14.0
 cargo run -- build-rom --no-battle-ui             # 배틀 UI 패치 스킵
 cargo run -- build-rom --battle-ui-font path/to/font.ttf
 cargo run -- build-rom --battle-ui-font-size 8.0
+
+# 배틀 메뉴 탭 스프라이트 (SYSTEM.SPR)
+cargo run -- build-rom --no-menu-tabs             # 메뉴 탭 패치 스킵
+cargo run -- build-rom --menu-tab-font path/to/font.ttf
+cargo run -- build-rom --menu-tab-font-size 10.0
+
+# 레벨업 스프라이트 (SYSTEM.SPR)
+cargo run -- build-rom --no-levelup               # 레벨업 패치 스킵
+cargo run -- build-rom --levelup-font path/to/font.ttf
+cargo run -- build-rom --levelup-font-size 14.0
 
 # 글리프 슬롯 검사 (dry-run, ROM 불필요)
 cargo run -- check-glyphs
