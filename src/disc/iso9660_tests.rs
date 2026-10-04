@@ -375,17 +375,14 @@ fn tracked_relocations_no_collision() {
 // -- Integration test against the real ROM --
 
 #[test]
-#[ignore]
+#[ignore = "requires the JP disc image (SS_MADOU_ROM)"]
 fn parse_real_rom_iso9660() {
     use std::path::Path;
 
     let rom_path = std::env::var("SS_MADOU_ROM")
         .unwrap_or_else(|_| "roms/Madou_Monogatari_JAP.bin".to_string());
     let path = Path::new(&rom_path);
-    if !path.exists() {
-        eprintln!("ROM not found at {rom_path}, skipping");
-        return;
-    }
+    assert!(path.exists(), "JP disc image is unavailable at {rom_path}");
 
     let disc = DiscImage::from_bin_file(path).unwrap();
     let iso = Iso9660::parse(&disc).unwrap();

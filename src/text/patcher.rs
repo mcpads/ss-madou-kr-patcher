@@ -90,11 +90,13 @@ impl SeqType {
                 prefix: [0x00, 0x24],
                 suffix: [0x00, 0x00, 0x00, 0x05],
                 base_offset: 0,
+                value_bias: 0,
             }),
             SeqType::Pt => Some(PointerPattern {
                 prefix: [0x00, 0x25],
                 suffix: [0x05, 0x00, 0x00, 0x00],
                 base_offset: 0,
+                value_bias: 0,
             }),
             _ => None,
         }
@@ -109,19 +111,20 @@ impl SeqType {
         match self {
             SeqType::Mp | SeqType::Other => {
                 let mut pats = vec![
-                    PointerPattern { prefix: [0x00, 0x24], suffix: [0x00, 0x00, 0x00, 0x05], base_offset: 0 },
+                    PointerPattern { prefix: [0x00, 0x24], suffix: [0x00, 0x00, 0x00, 0x05], base_offset: 0, value_bias: 0 },
                 ];
                 if file_len > 0x10000 {
                     pats.push(PointerPattern {
                         prefix: [0x00, 0x25],
                         suffix: [0x00, 0x00, 0x00, 0x05],
                         base_offset: 0x10000,
+                        value_bias: 0,
                     });
                 }
                 pats
             }
             SeqType::Pt => vec![
-                PointerPattern { prefix: [0x00, 0x25], suffix: [0x05, 0x00, 0x00, 0x00], base_offset: 0 },
+                PointerPattern { prefix: [0x00, 0x25], suffix: [0x05, 0x00, 0x00, 0x00], base_offset: 0, value_bias: 0 },
             ],
             _ => vec![],
         }
@@ -141,6 +144,19 @@ pub struct PointerPattern {
     /// `0x0000` for `00 24` (first 64KB), `0x10000` for `00 25` in MP files (overflow bank).
     /// PT files use `00 25` with base `0x0000` since they load at RAM 0x00250000.
     pub base_offset: usize,
+    /// Low 16 bits of the load address inside the prefix bank. PT0103/PT0104
+    /// load at RAM 0x0025B000, so their pointer values exceed file offsets by
+    /// 0xB000. Zero for every file that loads at the bank start.
+    pub value_bias: usize,
+}
+
+/// Load address of a PT/PARTY file, read from its first header pointer.
+/// Most load at 0x00250000; PT0103/PT0104 load at 0x0025B000.
+pub fn pt_load_address(seq_data: &[u8]) -> u32 {
+    match seq_data.get(4..8) {
+        Some(&[0x00, 0x25, hi, _]) => 0x0025_0000 | (u32::from(hi & 0xF0) << 8),
+        _ => 0x0025_0000,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -171,18 +187,30 @@ pub fn preserved_glyph_slots() -> BTreeSet<usize> {
 
 /// Find the correct insertion position for padding space tiles.
 ///
-/// Scans backwards over all trailing `FFxx` control code pairs so that
+/// Walks token boundaries, including control parameters, so that
 /// padding is always inserted BEFORE the entire ctrl suffix.  This prevents
 /// the game engine from interpreting padding bytes as control code parameters
 /// (which causes hardlocks — e.g. MP0401 "パノッティのフエ" ending in
 /// `FF02 FF3A FF3C` had padding appended after FF3C).
 fn find_padding_insert_pos(bytes: &[u8]) -> usize {
-    let mut pos = bytes.len();
-    // Walk backwards in 2-byte steps while we see FFxx control codes.
-    while pos >= 2 && bytes[pos - 2] == 0xFF {
-        pos -= 2;
+    let mut pos = 0;
+    let mut text_end = 0;
+    while pos + 1 < bytes.len() {
+        let code = u16::from_be_bytes([bytes[pos], bytes[pos + 1]]);
+        if code >= 0xFF00 {
+            // A parameter such as FF1B's 2043 is not a text tile. Padding
+            // after it would become an instruction in the following script.
+            let end = pos + 2 * (1 + super::script::control_code_param_count(code));
+            if end > bytes.len() {
+                return bytes.len();
+            }
+            pos = end;
+        } else {
+            pos += 2;
+            text_end = pos;
+        }
     }
-    pos
+    text_end
 }
 
 /// Truncate encoded bytes to fit `target_len` by removing text tokens
@@ -555,8 +583,9 @@ fn build_patched_buffer(
     // so the script engine never sees stray bytes between entries.
     // For COMMON: padding goes BEFORE the last FF00/FF09/FF05 delimiter
     // Fixed-length in-place patching (e.g. TITLE.SEQ, skill tables).
-    // Entries with pad_to_original have no pointer table, so text
-    // length MUST NOT change.  Pad shorter translations with space tiles.
+    // pad_to_original is a storage policy for entries without an enabled,
+    // verified relocation path; it does not prove that pointers are absent.
+    // Preserve those slots and pad shorter translations with space tiles.
     {
         let space = [(SPACE_TILE >> 8) as u8, (SPACE_TILE & 0xFF) as u8];
         for (i, p) in patches.iter_mut().enumerate() {
@@ -568,16 +597,16 @@ fn build_patched_buffer(
             if new_len > p.orig_len {
                 anyhow::bail!(
                     "Entry {} (offset 0x{:X}): Korean text is {} bytes longer than original ({} vs {}). \
-                     Shorten the translation to fit.",
+                     This fixed entry requires verified relocation or increased storage capacity.",
                     entries.get(i).map(|e| e.entry_id.as_str()).unwrap_or("?"),
                     p.offset, new_len - p.orig_len, new_len, p.orig_len
                 );
             }
 
             // Split by FF00 to pad each sub-item individually.
-            // Skill name tables are FF00-delimited; each sub-item must keep
-            // its original byte length so the game's sequential FF00 scan
-            // finds each name at the correct offset.
+            // Preserve each fixed sub-item's start as well as total extent.
+            // Some readers use individual name pointers; changing the padding
+            // location without auditing the reader can change delimiter scans.
             let orig_bytes = &seq_data[p.offset..p.offset + p.orig_len];
             let orig_items = split_on_sub_item_delimiters(orig_bytes);
             let new_items = split_on_sub_item_delimiters(&p.new_bytes);
@@ -589,7 +618,7 @@ fn build_patched_buffer(
                     if sub.len() > orig_sub.len() {
                         anyhow::bail!(
                             "Entry {} (offset 0x{:X}): sub-item {} is {} bytes longer than original ({} vs {}). \
-                             Shorten the skill name.",
+                             This fixed sub-item requires verified relocation or increased storage capacity.",
                             entries.get(i).map(|e| e.entry_id.as_str()).unwrap_or("?"),
                             p.offset, j, sub.len() - orig_sub.len(), sub.len(), orig_sub.len()
                         );
@@ -649,9 +678,12 @@ fn build_patched_buffer(
     // Required for COMMON (item/skill name tables), PT/PARTY (monster skill
     // tables with per-skill pointers — without this, pointers to individual
     // skill names within an entry all get the same shift, causing misalignment).
-    if seq_type == SeqType::Common || seq_type == SeqType::Pt {
+    // MP question tables also contain independently referenced FF00 labels.
+    if matches!(seq_type, SeqType::Common | SeqType::Pt | SeqType::Mp) {
         patches = split_common_sub_item_patches(seq_data, patches);
+    }
 
+    if seq_type == SeqType::Common || seq_type == SeqType::Pt {
         // COMMON has a pointer chain at file offset 0xA9B0 containing 318
         // 4-byte RAM pointers.  SH-2 requires longword-aligned access, so
         // the chain's new position must stay ≡ 0 mod 4.  Compute cumulative
@@ -730,12 +762,21 @@ pub fn apply_patches(
     seq_type: SeqType,
     opts: &PatchOptions,
 ) -> anyhow::Result<(Vec<u8>, usize)> {
-    let (mut result, patches) = build_patched_buffer(seq_data, entries, char_table, seq_type)?;
+    let (prepared, pending) = super::referenced_names::prepare(seq_data, entries, char_table)?;
+    ensure!(
+        pending.is_empty() || (seq_type == SeqType::Pt && !opts.skip_script_ptrs),
+        "Referenced name expansion requires PT script pointer relocation"
+    );
+    let (mut result, patches) = build_patched_buffer(seq_data, &prepared, char_table, seq_type)?;
 
     // Fix absolute-offset pointers in script code.
     let ptrs_fixed = match seq_type {
         _ if !seq_type.pointer_patterns(seq_data.len()).is_empty() && !opts.skip_script_ptrs => {
-            let pats = seq_type.pointer_patterns(seq_data.len());
+            let mut pats = seq_type.pointer_patterns(seq_data.len());
+            if seq_type == SeqType::Pt {
+                let bias = (pt_load_address(seq_data) & 0xFFFF) as usize;
+                pats.iter_mut().for_each(|p| p.value_bias = bias);
+            }
             fix_script_pointers(&mut result, seq_data, &patches, &pats, opts.dump_ptrs)?
         }
         SeqType::Common if !opts.skip_common_ptrs => {
@@ -746,6 +787,24 @@ pub fn apply_patches(
         }
         _ => 0,
     };
+
+    if !pending.is_empty() {
+        let shifts = ShiftTable::from_patches(&patches);
+        result = super::referenced_names::finish(
+            result,
+            &pending,
+            |offset| {
+                offset
+                    .checked_add_signed(shifts.shift_at(offset))
+                    .ok_or_else(|| anyhow::anyhow!("referenced name offset overflow"))
+            },
+            |range| {
+                patches
+                    .iter()
+                    .any(|p| range.start < p.offset + p.orig_len && p.offset < range.end)
+            },
+        )?;
+    }
 
     if opts.dump_seq {
         let type_str = match seq_type {
@@ -758,7 +817,7 @@ pub fn apply_patches(
         eprintln!("  Dumped patched SEQ: {} bytes → {}", result.len(), path);
     }
 
-    Ok((result, ptrs_fixed))
+    Ok((result, ptrs_fixed + pending.len()))
 }
 
 /// Record table regions where only field-0 (first 4 bytes) of each record
@@ -1110,7 +1169,10 @@ fn fix_script_pointers(
         };
 
         let ptr_val = ((original[i + 2] as usize) << 8) | (original[i + 3] as usize);
-        let file_offset = matched.base_offset + ptr_val;
+        let Some(file_offset) = (matched.base_offset + ptr_val).checked_sub(matched.value_bias) else {
+            i += 2;
+            continue;
+        };
 
         // All valid SEQ pointers target 2-byte-aligned addresses (text tokens
         // are 2 bytes). An odd file_offset is a definitive false positive
@@ -1145,8 +1207,8 @@ fn fix_script_pointers(
         // Determine which bank the NEW file offset belongs to.
         // Find the pattern whose bank contains the new offset.
         let new_bank = patterns.iter().find(|p| {
-            new_file_offset_u >= p.base_offset
-                && new_file_offset_u < p.base_offset + 0x10000
+            new_file_offset_u + p.value_bias >= p.base_offset
+                && new_file_offset_u + p.value_bias < p.base_offset + 0x10000
         });
         let new_bank = match new_bank {
             Some(b) => b,
@@ -1156,7 +1218,7 @@ fn fix_script_pointers(
             ),
         };
 
-        let new_val = (new_file_offset_u - new_bank.base_offset) as u16;
+        let new_val = (new_file_offset_u + new_bank.value_bias - new_bank.base_offset) as u16;
 
         // Compute the position of this pointer in the patched buffer.
         let pos_shift = shift_table.shift_at(i);
@@ -1254,6 +1316,7 @@ fn fix_script_pointers(
 /// - Korean characters (가-힣), spaces, ellipsis (…), brackets (「」) → Text
 /// - `{tile:XXXX}` → Tile(0xXXXX)
 /// - `{ctrl:XXXX}` → Ctrl(0xXXXX) (each colon-separated part becomes a Ctrl token)
+/// - `{josa:을}`, `{josa:이}`, `{josa:은}`, `{josa:과}` → runtime particle marker
 pub fn parse_ko_tokens(text: &str) -> Vec<TextToken> {
     let mut tokens = Vec::new();
     let mut current_text = String::new();
@@ -1287,6 +1350,12 @@ pub fn parse_ko_tokens(text: &str) -> Vec<TextToken> {
                         tokens.push(TextToken::Ctrl(code));
                     }
                 }
+            }
+            else if let Some(rest) = tag.strip_prefix("josa:") {
+                // Runtime particle marker; the shared-font mapper picks the form.
+                let marker = crate::font::shared_tiles::josa_marker(rest)
+                    .unwrap_or_else(|| panic!("unsupported particle marker {{josa:{rest}}}"));
+                tokens.push(TextToken::Text(marker.to_string()));
             }
             else if let Some(rest) = tag.strip_prefix("wide:") {
                 // {wide:NNN} → tile code 128 + NNN * 2

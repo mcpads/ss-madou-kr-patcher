@@ -126,17 +126,17 @@ fn multiple_relocations_no_collision() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore]
+#[ignore = "requires the JP disc image (SS_MADOU_ROM)"]
 fn isolation_descriptor_only() {
     use ss_madou::pipeline;
     use std::path::Path;
 
     let rom_path = std::env::var("SS_MADOU_ROM")
         .unwrap_or_else(|_| "roms/Madou_Monogatari_JAP.bin".to_string());
-    if !Path::new(&rom_path).exists() {
-        eprintln!("ROM not found at {}, skipping", rom_path);
-        return;
-    }
+    assert!(
+        Path::new(&rom_path).exists(),
+        "JP disc image is unavailable at {rom_path}"
+    );
 
     let ctx = pipeline::load_disc(Path::new(&rom_path)).unwrap();
 
@@ -147,7 +147,7 @@ fn isolation_descriptor_only() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "requires the JP disc image (SS_MADOU_ROM) and assets/fonts/neodgm.ttf"]
 fn isolation_font_only() {
     use ss_madou::font::korean::{GLYPH_TILE_START, TILES_PER_GLYPH, TILE_BYTES_PUB};
     use ss_madou::pipeline;
@@ -156,10 +156,11 @@ fn isolation_font_only() {
     let rom_path = std::env::var("SS_MADOU_ROM")
         .unwrap_or_else(|_| "roms/Madou_Monogatari_JAP.bin".to_string());
     let font_path = "assets/fonts/neodgm.ttf";
-    if !Path::new(&rom_path).exists() || !Path::new(font_path).exists() {
-        eprintln!("ROM or font not found, skipping");
-        return;
-    }
+    assert!(
+        Path::new(&rom_path).exists(),
+        "JP disc image is unavailable at {rom_path}"
+    );
+    assert!(Path::new(font_path).exists(), "test font is unavailable at {font_path}");
 
     let mut ctx = pipeline::load_disc(Path::new(&rom_path)).unwrap();
     let mut font_ctx = pipeline::extract_font(&ctx).unwrap();

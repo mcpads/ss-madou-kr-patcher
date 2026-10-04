@@ -125,15 +125,12 @@ fn extract_file_exact_sector_boundary() {
 // -- Integration test against the real ROM --
 
 #[test]
-#[ignore]
+#[ignore = "requires the JP disc image (SS_MADOU_ROM)"]
 fn read_real_rom_sector_0() {
     let rom_path = std::env::var("SS_MADOU_ROM")
         .unwrap_or_else(|_| "roms/Madou_Monogatari_JAP.bin".to_string());
     let path = Path::new(&rom_path);
-    if !path.exists() {
-        eprintln!("ROM not found at {rom_path}, skipping");
-        return;
-    }
+    assert!(path.exists(), "JP disc image is unavailable at {rom_path}");
 
     let disc = DiscImage::from_bin_file(path).unwrap();
     // Total file size: 146,661,312 / 2352 = 62,356 sectors

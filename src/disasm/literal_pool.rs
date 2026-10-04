@@ -1,5 +1,19 @@
-use super::address::VAddr;
+use super::address::{AddressSpace, VAddr};
 use super::analysis::{AddrType, AnalysisDb};
+use crate::sh2::{Instruction, InstructionKind};
+
+/// Read the register value loaded by a PC-relative MOV.W or MOV.L.
+/// MOV.W sign-extends two bytes; MOVA computes an address without reading memory.
+pub fn read_literal_pool_value(space: &AddressSpace, inst: &Instruction, pc: u32) -> Option<u32> {
+    let address = inst.literal_pool_addr(pc)?;
+    match inst.kind {
+        InstructionKind::MovWPcRel { .. } => space
+            .read_u16_be(address)
+            .map(|word| word as i16 as i32 as u32),
+        InstructionKind::MovLPcRel { .. } => space.read_u32_be(address),
+        _ => None,
+    }
+}
 
 /// Interpretation of a literal pool value.
 #[derive(Debug, Clone, PartialEq, Eq)]

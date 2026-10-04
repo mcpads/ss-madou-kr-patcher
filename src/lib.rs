@@ -6,3 +6,6 @@ pub mod output;
 pub mod pipeline;
 pub mod sh2;
 pub mod text;
+
+#[cfg(test)]
+mod test_input;

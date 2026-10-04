@@ -135,6 +135,9 @@ enum Commands {
     },
     /// Build a fully translated Korean ROM from translation JSONs.
     BuildRom {
+        /// Experimental resident tile sharing; renderer coverage is under validation.
+        #[arg(long)]
+        shared_font_tiles: bool,
         /// Path to the BIN file.
         #[arg(short, long, default_value = "roms/Madou_Monogatari_JAP.bin")]
         rom: PathBuf,
@@ -148,7 +151,11 @@ enum Commands {
         #[arg(short = 'O', long)]
         output_dir: Option<PathBuf>,
         /// Directory containing translation JSON files.
-        #[arg(short, long, default_value = "assets/translations/scripts/needs_review")]
+        #[arg(
+            short,
+            long,
+            default_value = "assets/translations/scripts/needs_review"
+        )]
         translations_dir: PathBuf,
         /// Font rendering size in pixels.
         #[arg(long, default_value = "12.0")]
@@ -201,6 +208,39 @@ enum Commands {
         /// Font size for menu tab sprite rendering.
         #[arg(long, default_value = "10.0")]
         menu_tab_font_size: f32,
+        /// Path to TTF font for level-up sprite. Use --no-levelup to skip.
+        #[arg(long, default_value = "assets/fonts/MaplestoryBold.ttf")]
+        levelup_font: PathBuf,
+        /// Skip level-up sprite patching.
+        #[arg(long)]
+        no_levelup: bool,
+        /// Font size for level-up sprite rendering.
+        #[arg(long, default_value = "14.0")]
+        levelup_font_size: f32,
+        /// Admitted RGBA master for TITLELOG.SPR. Use --no-title-logo to skip.
+        #[arg(long, default_value = "assets/title_logo/title_external_corrected.png")]
+        title_logo_master: PathBuf,
+        /// Skip Korean title-logo patching.
+        #[arg(long)]
+        no_title_logo: bool,
+        /// Galmuri9 font for the outlined title-screen character copyright line.
+        #[arg(long, default_value = "assets/fonts/Galmuri9.ttf")]
+        title_copyright_font: PathBuf,
+        /// Skip Korean title-screen character copyright patching.
+        #[arg(long)]
+        no_title_copyright: bool,
+        /// Pixel font for the flea location marker (B_NOMIA0/FNOMI01/FNOMI02.SPR).
+        #[arg(long, default_value = "assets/fonts/DNFBitBitv2.ttf")]
+        flea_marker_font: PathBuf,
+        /// Skip Korean flea location marker patching.
+        #[arg(long)]
+        no_flea_marker: bool,
+        /// Font for the ending staff-roll headings, roles, and character names.
+        #[arg(long, default_value = "assets/fonts/NEXONLv2Gothic.ttf")]
+        credits_font: PathBuf,
+        /// Skip Korean ending staff-roll patching.
+        #[arg(long)]
+        no_ending_credits: bool,
     },
     /// Recompress SEQ file(s) without text changes (CNX compressor isolation test).
     TestRecompress {
@@ -214,7 +254,11 @@ enum Commands {
         #[arg(long)]
         all: bool,
         /// Output patched BIN file.
-        #[arg(short, long, default_value = "out/test_recompress/Madou_Monogatari_KO.bin")]
+        #[arg(
+            short,
+            long,
+            default_value = "out/test_recompress/Madou_Monogatari_KO.bin"
+        )]
         output: PathBuf,
     },
     /// Compare two ROM images (sector-level diff with file mapping).
@@ -235,7 +279,11 @@ enum Commands {
         #[arg(short, long)]
         query: String,
         /// Translation JSON directory.
-        #[arg(short, long, default_value = "assets/translations/scripts/needs_review")]
+        #[arg(
+            short,
+            long,
+            default_value = "assets/translations/scripts/needs_review"
+        )]
         translations_dir: PathBuf,
     },
     /// Check glyph slot allocation (dry-run, no ROM needed).
@@ -285,9 +333,15 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Info { rom } => commands::disc::cmd_info(&rom),
         Commands::Files { rom } => commands::disc::cmd_files(&rom),
-        Commands::Extract { rom, file, output } => commands::disc::cmd_extract(&rom, &file, &output),
-        Commands::Decompress { rom, file, output } => commands::disc::cmd_decompress(&rom, &file, &output),
-        Commands::DecompressAll { rom, output } => commands::disc::cmd_decompress_all(&rom, &output),
+        Commands::Extract { rom, file, output } => {
+            commands::disc::cmd_extract(&rom, &file, &output)
+        }
+        Commands::Decompress { rom, file, output } => {
+            commands::disc::cmd_decompress(&rom, &file, &output)
+        }
+        Commands::DecompressAll { rom, output } => {
+            commands::disc::cmd_decompress_all(&rom, &output)
+        }
         Commands::FontDump {
             input,
             output,
@@ -305,7 +359,24 @@ fn main() -> Result<()> {
             batch_size,
             indexed,
             label_start,
-        } => commands::font::cmd_font_dump(&input, &output, tile_width, tile_height, bpp, cols, scale, skip, count, combine_2x2, combine_1x2, combine_2x1, combine.as_deref(), batch_size, indexed, label_start),
+        } => commands::font::cmd_font_dump(
+            &input,
+            &output,
+            tile_width,
+            tile_height,
+            bpp,
+            cols,
+            scale,
+            skip,
+            count,
+            combine_2x2,
+            combine_1x2,
+            combine_2x1,
+            combine.as_deref(),
+            batch_size,
+            indexed,
+            label_start,
+        ),
         Commands::DumpScript {
             input,
             all,
@@ -314,8 +385,17 @@ fn main() -> Result<()> {
             output_dir,
             glyph_map,
             max_entries,
-        } => commands::text::cmd_dump_script(input.as_deref(), all, &input_dir, output.as_deref(), &output_dir, &glyph_map, max_entries),
+        } => commands::text::cmd_dump_script(
+            input.as_deref(),
+            all,
+            &input_dir,
+            output.as_deref(),
+            &output_dir,
+            &glyph_map,
+            max_entries,
+        ),
         Commands::BuildRom {
+            shared_font_tiles,
             rom,
             font,
             output,
@@ -338,21 +418,92 @@ fn main() -> Result<()> {
             menu_tab_font,
             no_menu_tabs,
             menu_tab_font_size,
+            levelup_font,
+            no_levelup,
+            levelup_font_size,
+            title_logo_master,
+            no_title_logo,
+            title_copyright_font,
+            no_title_copyright,
+            flea_marker_font,
+            no_flea_marker,
+            credits_font,
+            no_ending_credits,
         } => {
             let final_output = match output_dir {
-                Some(dir) => dir.join(output.file_name().unwrap_or(std::ffi::OsStr::new("Madou_Monogatari_KO.bin"))),
+                Some(dir) => dir.join(
+                    output
+                        .file_name()
+                        .unwrap_or(std::ffi::OsStr::new("Madou_Monogatari_KO.bin")),
+                ),
                 None => output,
             };
-            let pf = if no_prologue { None } else { Some(prologue_font.as_path()) };
-            let bf = if no_battle_ui { None } else { Some(battle_ui_font.as_path()) };
-            let mf = if no_menu_tabs { None } else { Some(menu_tab_font.as_path()) };
+            let pf = if no_prologue {
+                None
+            } else {
+                Some(prologue_font.as_path())
+            };
+            let bf = if no_battle_ui {
+                None
+            } else {
+                Some(battle_ui_font.as_path())
+            };
+            let mf = if no_menu_tabs {
+                None
+            } else {
+                Some(menu_tab_font.as_path())
+            };
+            let lf = if no_levelup {
+                None
+            } else {
+                Some(levelup_font.as_path())
+            };
+            let tl = if no_title_logo {
+                None
+            } else {
+                Some(title_logo_master.as_path())
+            };
+            let tc = if no_title_copyright {
+                None
+            } else {
+                Some(title_copyright_font.as_path())
+            };
+            let fm = if no_flea_marker {
+                None
+            } else {
+                Some(flea_marker_font.as_path())
+            };
+            let ec = if no_ending_credits {
+                None
+            } else {
+                Some(credits_font.as_path())
+            };
             commands::build::cmd_build_rom(
-                &rom, &font, &final_output, &translations_dir, font_size,
-                &only_seq, &except_seq, skip_seq,
-                dump_seq, dump_ptrs, skip_common_ptrs, skip_script_ptrs,
-                pf, prologue_font_size,
-                bf, battle_ui_font_size,
-                mf, menu_tab_font_size,
+                shared_font_tiles,
+                &rom,
+                &font,
+                &final_output,
+                &translations_dir,
+                font_size,
+                &only_seq,
+                &except_seq,
+                skip_seq,
+                dump_seq,
+                dump_ptrs,
+                skip_common_ptrs,
+                skip_script_ptrs,
+                pf,
+                prologue_font_size,
+                bf,
+                battle_ui_font_size,
+                mf,
+                menu_tab_font_size,
+                lf,
+                levelup_font_size,
+                tl,
+                tc,
+                fm,
+                ec,
             )
         }
         Commands::TestRecompress {
@@ -368,11 +519,9 @@ fn main() -> Result<()> {
                 commands::build::cmd_test_recompress(&rom, seq, &output)
             }
         }
-        Commands::RomDiff {
-            rom_a,
-            rom_b,
-            file,
-        } => commands::diff::cmd_rom_diff(&rom_a, &rom_b, file.as_deref()),
+        Commands::RomDiff { rom_a, rom_b, file } => {
+            commands::diff::cmd_rom_diff(&rom_a, &rom_b, file.as_deref())
+        }
         Commands::DecodeText {
             query,
             translations_dir,
@@ -392,6 +541,13 @@ fn main() -> Result<()> {
             end,
             query,
             output,
-        } => commands::disasm::cmd_disasm(&rom, mode, start.as_deref(), end.as_deref(), query.as_deref(), &output),
+        } => commands::disasm::cmd_disasm(
+            &rom,
+            mode,
+            start.as_deref(),
+            end.as_deref(),
+            query.as_deref(),
+            &output,
+        ),
     }
 }

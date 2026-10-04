@@ -8,7 +8,7 @@ use super::linear::DisasmLine;
 pub enum AddrType {
     /// Executable code.
     Code,
-    /// Literal pool (32-bit constant loaded via PC-relative MOV.L).
+    /// Literal pool constant loaded via PC-relative MOV.W or MOV.L.
     LiteralPool,
     /// Known data (not code).
     Data,

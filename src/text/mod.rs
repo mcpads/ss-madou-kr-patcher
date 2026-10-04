@@ -1,6 +1,8 @@
+pub mod appendix;
 pub mod glyph;
 pub mod overflow;
 pub mod patcher;
+mod referenced_names;
 pub mod scanner;
 pub mod script;
 pub mod seq;

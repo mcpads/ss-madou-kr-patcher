@@ -7,11 +7,7 @@ use ss_madou::compression;
 
 /// Recompress a SEQ file without any text changes and write to a new ROM.
 /// This isolates CNX compressor compatibility from text patching.
-pub(crate) fn cmd_test_recompress(
-    rom: &Path,
-    seq_name: &str,
-    output: &Path,
-) -> Result<()> {
+pub(crate) fn cmd_test_recompress(rom: &Path, seq_name: &str, output: &Path) -> Result<()> {
     use ss_madou::pipeline;
     const USER_DATA_SIZE: usize = 2048;
 
@@ -24,9 +20,7 @@ pub(crate) fn cmd_test_recompress(
         .find_file(ctx.disc.disc(), seq_name)?
         .context(format!("{} not found on disc", seq_name))?;
 
-    let original_compressed = ctx
-        .iso
-        .extract_file(ctx.disc.disc(), &seq_entry)?;
+    let original_compressed = ctx.iso.extract_file(ctx.disc.disc(), &seq_entry)?;
     let original_header = compression::parse_header(&original_compressed)?;
 
     println!(
@@ -66,14 +60,16 @@ pub(crate) fn cmd_test_recompress(
     }
 
     // Write recompressed data to disc.
-    let original_sectors =
-        (original_compressed.len() + USER_DATA_SIZE - 1) / USER_DATA_SIZE;
+    let original_sectors = (original_compressed.len() + USER_DATA_SIZE - 1) / USER_DATA_SIZE;
     let new_sectors = (recompressed.len() + USER_DATA_SIZE - 1) / USER_DATA_SIZE;
 
     if new_sectors > original_sectors {
         ctx.iso
             .relocate_file_tracked(&mut ctx.disc, seq_name, &recompressed)?;
-        println!("Relocated to new LBA (grew from {} to {} sectors)", original_sectors, new_sectors);
+        println!(
+            "Relocated to new LBA (grew from {} to {} sectors)",
+            original_sectors, new_sectors
+        );
     } else {
         let label = format!("{}:recompress-test", seq_name);
         ctx.disc
@@ -98,10 +94,7 @@ pub(crate) fn cmd_test_recompress(
         }
     }
     pipeline::save_disc(&mut ctx, output)?;
-    println!(
-        "\nTest ROM: {}",
-        output.with_extension("cue").display()
-    );
+    println!("\nTest ROM: {}", output.with_extension("cue").display());
 
     Ok(())
 }
@@ -139,12 +132,18 @@ pub(crate) fn cmd_test_recompress_all(rom: &Path, output: &Path) -> Result<()> {
 
         let header = match compression::parse_header(&file_data) {
             Ok(h) => h,
-            Err(_) => { skipped += 1; continue; }
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
         };
 
         let decompressed = match compression::decompress(&file_data) {
             Ok(d) => d,
-            Err(_) => { skipped += 1; continue; }
+            Err(_) => {
+                skipped += 1;
+                continue;
+            }
         };
 
         let recompressed = compression::compress(&decompressed, &header.subtype);
@@ -168,18 +167,30 @@ pub(crate) fn cmd_test_recompress_all(rom: &Path, output: &Path) -> Result<()> {
             let label = format!("{}:recomp-pad", entry.name);
             ctx.disc.write_file_at(entry.lba as u32, &padded, &label)?;
         } else if new_sectors > original_sectors {
-            ctx.iso.relocate_file_tracked(&mut ctx.disc, &entry.name, &recompressed)?;
-            println!("  {} relocated ({} → {} sectors)", entry.name, original_sectors, new_sectors);
+            ctx.iso
+                .relocate_file_tracked(&mut ctx.disc, &entry.name, &recompressed)?;
+            println!(
+                "  {} relocated ({} → {} sectors)",
+                entry.name, original_sectors, new_sectors
+            );
         } else {
             let label = format!("{}:recomp", entry.name);
-            ctx.disc.write_file_at(entry.lba as u32, &recompressed, &label)?;
-            ctx.iso.patch_file_size_tracked(&mut ctx.disc, &entry.name, recompressed.len() as u32)?;
+            ctx.disc
+                .write_file_at(entry.lba as u32, &recompressed, &label)?;
+            ctx.iso.patch_file_size_tracked(
+                &mut ctx.disc,
+                &entry.name,
+                recompressed.len() as u32,
+            )?;
         }
 
         recompressed_count += 1;
     }
 
-    println!("\nRecompressed: {} files, skipped: {}, total delta: {:+} bytes", recompressed_count, skipped, total_delta);
+    println!(
+        "\nRecompressed: {} files, skipped: {}, total delta: {:+} bytes",
+        recompressed_count, skipped, total_delta
+    );
 
     if let Some(parent) = output.parent() {
         if !parent.as_os_str().is_empty() {
@@ -194,10 +205,7 @@ pub(crate) fn cmd_test_recompress_all(rom: &Path, output: &Path) -> Result<()> {
 
 /// Dry-run glyph allocation: show assigned/unassigned chars with frequency.
 /// No ROM needed — only scans translation JSONs.
-pub(crate) fn cmd_check_glyphs(
-    translations_dir: &Path,
-    verbose: bool,
-) -> Result<()> {
+pub(crate) fn cmd_check_glyphs(translations_dir: &Path, verbose: bool) -> Result<()> {
     use ss_madou::font::korean::{GLYPH_TILE_START, TILES_PER_GLYPH};
     use ss_madou::pipeline;
     use ss_madou::text::patcher;
@@ -254,19 +262,38 @@ pub(crate) fn cmd_check_glyphs(
         for dump in dumps {
             for entry in &dump.entries {
                 if let Some(ko) = &entry.ko {
-                    if ko.is_empty() { continue; }
-                    if !matches!(entry.status, TranslationStatus::NeedsReview | TranslationStatus::NeedsHumanReview | TranslationStatus::Done) {
+                    if ko.is_empty() {
+                        continue;
+                    }
+                    if !matches!(
+                        entry.status,
+                        TranslationStatus::NeedsReview
+                            | TranslationStatus::NeedsHumanReview
+                            | TranslationStatus::Done
+                    ) {
                         continue;
                     }
                     let snippet = if ko.len() > 80 {
-                        format!("{}...", &ko[..ko.char_indices().take(60).last().map(|(i,_)|i).unwrap_or(80)])
+                        format!(
+                            "{}...",
+                            &ko[..ko
+                                .char_indices()
+                                .take(60)
+                                .last()
+                                .map(|(i, _)| i)
+                                .unwrap_or(80)]
+                        )
                     } else {
                         ko.clone()
                     };
                     for ch in ko.chars() {
                         if !matches!(ch, ' ' | '\u{2026}' | '\u{300C}' | '\u{300D}' | '\u{3000}') {
                             *char_freq.entry(ch).or_insert(0) += 1;
-                            char_sources.entry(ch).or_default().push((source.clone(), entry.id.clone(), snippet.clone()));
+                            char_sources.entry(ch).or_default().push((
+                                source.clone(),
+                                entry.id.clone(),
+                                snippet.clone(),
+                            ));
                         }
                     }
                 }
@@ -275,13 +302,18 @@ pub(crate) fn cmd_check_glyphs(
     }
 
     new_glyph_chars.sort_by(|a, b| {
-        char_freq.get(b).unwrap_or(&0).cmp(&char_freq.get(a).unwrap_or(&0))
+        char_freq
+            .get(b)
+            .unwrap_or(&0)
+            .cmp(&char_freq.get(a).unwrap_or(&0))
     });
 
     // 5. Slot assignment.
     let unavailable = preserve.clone();
     let (mut char_table, mut unassigned) = patcher::build_char_table_safe(
-        &new_glyph_chars, &unavailable, patcher::MAX_VDP2_GLYPH_INDEX,
+        &new_glyph_chars,
+        &unavailable,
+        patcher::MAX_VDP2_GLYPH_INDEX,
     );
     char_table.extend(original_tile_map.iter().map(|(&ch, &tc)| (ch, tc)));
 
@@ -304,26 +336,41 @@ pub(crate) fn cmd_check_glyphs(
 
     let assigned_count = new_glyph_chars.len() - unassigned.len();
     let preserved_used = original_tile_map.len() - sec6_direct_count;
-    let korean_need = new_glyph_chars.iter().filter(|c| ('\u{AC00}'..='\u{D7A3}').contains(c)).count();
+    let korean_need = new_glyph_chars
+        .iter()
+        .filter(|c| ('\u{AC00}'..='\u{D7A3}').contains(c))
+        .count();
     let other_need = new_glyph_chars.len() - korean_need;
 
     // 6. Report.
     println!("\n--- Slot Summary ---");
     println!("Unique chars in translations: {}", text_chars.len());
-    println!("  Sec6 direct-mapped (no slot needed): {}", sec6_direct_count);
-    println!("  Preserved slots reused: {} (symbols 161-175, icons 832-834)", preserved_used);
-    println!("  Glyphs needing new slots: {} ({} Korean + {} other)", new_glyph_chars.len(), korean_need, other_need);
+    println!(
+        "  Sec6 direct-mapped (no slot needed): {}",
+        sec6_direct_count
+    );
+    println!(
+        "  Preserved slots reused: {} (symbols 161-175, icons 832-834)",
+        preserved_used
+    );
+    println!(
+        "  Glyphs needing new slots: {} ({} Korean + {} other)",
+        new_glyph_chars.len(),
+        korean_need,
+        other_need
+    );
     println!();
-    println!("VDP2 limit: 914 slots (12-bit PND)");
+    println!("Current fixed-slot layout: 914 sec7 slots");
     println!("  Preserved (blocked): {} slots", preserve.len());
     println!("  Available for Korean: {}", 914 - preserve.len());
     println!("  Sec6 reclaimed: +{}", sec6_reclaimed);
     println!("  Assigned: {}", assigned_count);
-    println!("  Unassigned (blank): {}", unassigned.len());
+    println!("  Unassigned (build blocked): {}", unassigned.len());
     println!();
 
     // Assigned chars (sorted by freq desc).
-    let mut assigned_chars: Vec<(char, usize)> = new_glyph_chars.iter()
+    let mut assigned_chars: Vec<(char, usize)> = new_glyph_chars
+        .iter()
         .filter(|c| !unassigned.contains(c))
         .map(|&c| (c, *char_freq.get(&c).unwrap_or(&0)))
         .collect();
@@ -332,20 +379,26 @@ pub(crate) fn cmd_check_glyphs(
     println!("--- Assigned: {} chars ---", assigned_chars.len());
     // Print in compact rows
     for row in assigned_chars.chunks(10) {
-        let line: Vec<String> = row.iter()
+        let line: Vec<String> = row
+            .iter()
             .map(|(ch, freq)| format!("{}({})", ch, freq))
             .collect();
         println!("  {}", line.join(" "));
     }
 
     if !unassigned.is_empty() {
-        println!("\n--- Unassigned: {} chars (will render as BLANK) ---", unassigned.len());
-        let mut unassigned_with_freq: Vec<(char, usize)> = unassigned.iter()
+        println!(
+            "\n--- Unassigned: {} chars (will render as BLANK) ---",
+            unassigned.len()
+        );
+        let mut unassigned_with_freq: Vec<(char, usize)> = unassigned
+            .iter()
             .map(|&c| (c, *char_freq.get(&c).unwrap_or(&0)))
             .collect();
         unassigned_with_freq.sort_by(|a, b| b.1.cmp(&a.1));
         for row in unassigned_with_freq.chunks(10) {
-            let line: Vec<String> = row.iter()
+            let line: Vec<String> = row
+                .iter()
                 .map(|(ch, freq)| format!("{}({})", ch, freq))
                 .collect();
             println!("  {}", line.join(" "));
@@ -360,10 +413,17 @@ pub(crate) fn cmd_check_glyphs(
                     let mut shown = 0usize;
                     for (fname, eid, snippet) in sources {
                         let key = (fname.as_str(), eid.as_str());
-                        if !seen.insert(key) { continue; }
+                        if !seen.insert(key) {
+                            continue;
+                        }
                         let hl = snippet.replace(ch, &format!("【{}】", ch));
                         let truncated = if hl.len() > 120 {
-                            let end = hl.char_indices().take(80).last().map(|(i,_)|i).unwrap_or(120);
+                            let end = hl
+                                .char_indices()
+                                .take(80)
+                                .last()
+                                .map(|(i, _)| i)
+                                .unwrap_or(120);
                             format!("{}...", &hl[..end])
                         } else {
                             hl
@@ -371,9 +431,11 @@ pub(crate) fn cmd_check_glyphs(
                         println!("    {} #{}: {}", fname, eid, truncated);
                         shown += 1;
                         if shown >= 3 {
-                            let total_unique = sources.iter()
+                            let total_unique = sources
+                                .iter()
                                 .map(|(f, e, _)| (f.as_str(), e.as_str()))
-                                .collect::<std::collections::HashSet<_>>().len();
+                                .collect::<std::collections::HashSet<_>>()
+                                .len();
                             if total_unique > 3 {
                                 println!("    ... 외 {}건", total_unique - 3);
                             }
@@ -389,7 +451,8 @@ pub(crate) fn cmd_check_glyphs(
     let mut all_freq: Vec<(char, usize)> = char_freq.iter().map(|(&c, &f)| (c, f)).collect();
     all_freq.sort_by(|a, b| b.1.cmp(&a.1));
     for row in all_freq.iter().take(50).collect::<Vec<_>>().chunks(10) {
-        let line: Vec<String> = row.iter()
+        let line: Vec<String> = row
+            .iter()
             .map(|(ch, freq)| format!("{}({})", ch, freq))
             .collect();
         println!("  {}", line.join(" "));
@@ -401,11 +464,11 @@ pub(crate) fn cmd_check_glyphs(
         let base = fname.strip_suffix(".json").unwrap_or(fname);
         // MP0101_03 -> MP01, PT0901 -> PT09, DIARY_01 -> DIARY, COMMON_02 -> COMMON, DM_END_05 -> DM_END, DUNG01_01 -> DUNG01, TITLE -> TITLE
         if base.starts_with("MP") && base.len() >= 4 {
-            &base[..4]  // MP01, MP02, ...
+            &base[..4] // MP01, MP02, ...
         } else if base.starts_with("PT") && base.len() >= 4 {
-            &base[..4]  // PT09, PT10, ...
+            &base[..4] // PT09, PT10, ...
         } else if base.starts_with("DUNG") && base.len() >= 6 {
-            &base[..6]  // DUNG01, DUNG02, ...
+            &base[..6] // DUNG01, DUNG02, ...
         } else if base.starts_with("DM_END") {
             "DM_END"
         } else {
@@ -423,13 +486,22 @@ pub(crate) fn cmd_check_glyphs(
     for &(ch, freq) in &assigned_chars {
         if let Some(sources) = char_sources.get(&ch) {
             let unique_files: HashSet<&str> = sources.iter().map(|(f, _, _)| f.as_str()).collect();
-            let unique_chapters: HashSet<&str> = sources.iter().map(|(f, _, _)| chapter_of(f)).collect();
+            let unique_chapters: HashSet<&str> =
+                sources.iter().map(|(f, _, _)| chapter_of(f)).collect();
 
             if unique_files.len() == 1 {
-                single_file_chars.push((ch, freq, unique_files.into_iter().next().unwrap().to_string()));
+                single_file_chars.push((
+                    ch,
+                    freq,
+                    unique_files.into_iter().next().unwrap().to_string(),
+                ));
             }
             if unique_chapters.len() == 1 {
-                single_chapter_chars.push((ch, freq, unique_chapters.into_iter().next().unwrap().to_string()));
+                single_chapter_chars.push((
+                    ch,
+                    freq,
+                    unique_chapters.into_iter().next().unwrap().to_string(),
+                ));
             }
         }
     }
@@ -438,15 +510,25 @@ pub(crate) fn cmd_check_glyphs(
     single_file_chars.sort_by(|a, b| a.1.cmp(&b.1));
     single_chapter_chars.sort_by(|a, b| a.1.cmp(&b.1));
 
-    println!("\n--- Assigned but single-file only: {} chars (slot reclaim candidates) ---", single_file_chars.len());
+    println!(
+        "\n--- Assigned but single-file only: {} chars (slot reclaim candidates) ---",
+        single_file_chars.len()
+    );
     for (ch, freq, fname) in &single_file_chars {
         // Show example usage
-        let examples: Vec<String> = char_sources.get(ch).unwrap()
+        let examples: Vec<String> = char_sources
+            .get(ch)
+            .unwrap()
             .iter()
             .map(|(_, eid, snippet)| {
                 let hl = snippet.replace(*ch, &format!("【{}】", ch));
                 let truncated = if hl.len() > 100 {
-                    let end = hl.char_indices().take(70).last().map(|(i,_)|i).unwrap_or(100);
+                    let end = hl
+                        .char_indices()
+                        .take(70)
+                        .last()
+                        .map(|(i, _)| i)
+                        .unwrap_or(100);
                     format!("{}...", &hl[..end])
                 } else {
                     hl
@@ -457,18 +539,34 @@ pub(crate) fn cmd_check_glyphs(
             .into_iter()
             .take(2)
             .collect();
-        println!("  {} freq={} file={} | {}", ch, freq, fname, examples.join(" / "));
+        println!(
+            "  {} freq={} file={} | {}",
+            ch,
+            freq,
+            fname,
+            examples.join(" / ")
+        );
     }
 
-    println!("\n--- Assigned but single-chapter only: {} chars ---", single_chapter_chars.len());
+    println!(
+        "\n--- Assigned but single-chapter only: {} chars ---",
+        single_chapter_chars.len()
+    );
     // Group by chapter for cleaner output
-    let mut by_chapter: std::collections::BTreeMap<String, Vec<(char, usize)>> = std::collections::BTreeMap::new();
+    let mut by_chapter: std::collections::BTreeMap<String, Vec<(char, usize)>> =
+        std::collections::BTreeMap::new();
     for (ch, freq, chap) in &single_chapter_chars {
-        by_chapter.entry(chap.clone()).or_default().push((*ch, *freq));
+        by_chapter
+            .entry(chap.clone())
+            .or_default()
+            .push((*ch, *freq));
     }
     for (chap, mut chars) in by_chapter {
         chars.sort_by(|a, b| a.1.cmp(&b.1));
-        let line: Vec<String> = chars.iter().map(|(ch, freq)| format!("{}({})", ch, freq)).collect();
+        let line: Vec<String> = chars
+            .iter()
+            .map(|(ch, freq)| format!("{}({})", ch, freq))
+            .collect();
         println!("  [{}] {} chars: {}", chap, chars.len(), line.join(" "));
     }
 
@@ -479,13 +577,14 @@ pub(crate) fn cmd_check_glyphs(
 // build-rom stage helpers
 // ---------------------------------------------------------------------------
 
-use ss_madou::font::korean::{GLYPH_TILE_START, TILES_PER_GLYPH, TILE_BYTES_PUB};
+use ss_madou::font::korean::{GLYPH_TILE_START, TILE_BYTES_PUB, TILES_PER_GLYPH};
 use ss_madou::pipeline;
 use ss_madou::text::patcher;
 use std::collections::HashMap;
 
 /// Result of the glyph-allocation stage, passed to later stages.
 struct AllocResult {
+    shared_tiles: bool,
     /// Character → tile code mapping (Korean glyphs + preserved + sec6 direct).
     char_table: HashMap<char, u16>,
     /// Characters that need new glyph rendering (excludes preserved / sec6 direct).
@@ -512,7 +611,9 @@ struct SeqPatchResult {
 }
 
 /// Stage 1: Overflow check — warn but don't block the build.
-fn build_stage_overflow_check(seq_groups: &HashMap<String, Vec<ss_madou::text::script::ScriptDump>>) {
+fn build_stage_overflow_check(
+    seq_groups: &HashMap<String, Vec<ss_madou::text::script::ScriptDump>>,
+) {
     use ss_madou::text::overflow;
     let mut overflow_count = 0usize;
     for (source, dumps) in seq_groups {
@@ -531,13 +632,38 @@ fn build_stage_overflow_check(seq_groups: &HashMap<String, Vec<ss_madou::text::s
                     } => {
                         eprintln!(
                             "  WARN overflow: {} line {} -- {} chars (limit {}) \"{}\"",
-                            v.entry_id, line_index + 1, char_count, limit, line_text
+                            v.entry_id,
+                            line_index + 1,
+                            char_count,
+                            limit,
+                            line_text
                         );
                     }
                     overflow::ViolationKind::TooManyLines { line_count, limit } => {
                         eprintln!(
                             "  WARN overflow: {} -- {} lines (limit {})",
                             v.entry_id, line_count, limit
+                        );
+                    }
+                    overflow::ViolationKind::ChoiceLineOverflow {
+                        option_index,
+                        char_count,
+                        jp_max_width,
+                        line_text,
+                    } => {
+                        eprintln!(
+                            "  WARN choice overflow: {} option {} -- {} chars (JP max {}) \"{}\"",
+                            v.entry_id,
+                            option_index + 1,
+                            char_count,
+                            jp_max_width,
+                            line_text
+                        );
+                    }
+                    overflow::ViolationKind::ChoiceOptionCountMismatch { ko_count, jp_count } => {
+                        eprintln!(
+                            "  WARN choice count: {} -- KO {} options vs JP {}",
+                            v.entry_id, ko_count, jp_count
                         );
                     }
                 }
@@ -555,6 +681,7 @@ fn build_stage_overflow_check(seq_groups: &HashMap<String, Vec<ss_madou::text::s
 /// Stage 2: Collect chars, compute frequencies, assign glyph slots, reclaim sec6.
 fn build_stage_allocate(
     all_patch_entries: &HashMap<String, Vec<patcher::TranslationEntry>>,
+    shared_tiles: bool,
 ) -> Result<AllocResult> {
     // Flatten patch entries.
     let all_entries_flat: Vec<patcher::TranslationEntry> = all_patch_entries
@@ -564,8 +691,8 @@ fn build_stage_allocate(
     let text_chars = patcher::collect_text_chars(&all_entries_flat);
 
     let glyph_csv_path = "assets/glyph_mapping.csv";
-    let glyph_csv = fs::read_to_string(glyph_csv_path)
-        .context(format!("Failed to read {}", glyph_csv_path))?;
+    let glyph_csv =
+        fs::read_to_string(glyph_csv_path).context(format!("Failed to read {}", glyph_csv_path))?;
     let glyph_table = ss_madou::text::glyph::GlyphTable::from_csv(&glyph_csv)
         .map_err(|e| anyhow::anyhow!("Failed to parse glyph mapping: {}", e))?;
 
@@ -574,6 +701,27 @@ fn build_stage_allocate(
     let mut new_glyph_chars: Vec<char> = Vec::new();
     let mut original_tile_map: HashMap<char, u16> = HashMap::new();
     let mut sec6_direct_count = 0usize;
+    let uses_josa = text_chars
+        .iter()
+        .any(|&ch| ss_madou::font::shared_tiles::is_josa_marker(ch));
+    anyhow::ensure!(
+        !uses_josa || shared_tiles,
+        "{{josa:…}} particle markers require --shared-font-tiles"
+    );
+    let mut text_chars: Vec<char> = text_chars
+        .into_iter()
+        .filter(|&ch| !ss_madou::font::shared_tiles::is_josa_marker(ch))
+        .collect();
+    if uses_josa {
+        // Both forms of every marker must be drawable glyphs.
+        for (_, final_form, plain_form) in ss_madou::font::shared_tiles::JOSA_MARKERS {
+            for form in [final_form, plain_form] {
+                if !text_chars.contains(&form) {
+                    text_chars.push(form);
+                }
+            }
+        }
+    }
     for &ch in &text_chars {
         // Check 1: preserved icon slots (832-834)
         if let Some(tile_code) = glyph_table.encode(ch) {
@@ -592,11 +740,16 @@ fn build_stage_allocate(
         new_glyph_chars.push(ch);
     }
 
-    let korean_count = new_glyph_chars.iter().filter(|c| ('\u{AC00}'..='\u{D7A3}').contains(c)).count();
+    let korean_count = new_glyph_chars
+        .iter()
+        .filter(|c| ('\u{AC00}'..='\u{D7A3}').contains(c))
+        .count();
     println!("\nUnique text characters: {} total", text_chars.len());
     println!(
         "  Glyphs needed: {} ({} Korean + {} other)",
-        new_glyph_chars.len(), korean_count, new_glyph_chars.len() - korean_count
+        new_glyph_chars.len(),
+        korean_count,
+        new_glyph_chars.len() - korean_count
     );
     if sec6_direct_count > 0 {
         println!(
@@ -615,8 +768,8 @@ fn build_stage_allocate(
     }
 
     // Build character frequency map for priority-based slot assignment.
-    // All game text (menus + dialogue) uses VDP2 NBG3 (confirmed by emulator),
-    // so ALL chars must fit within the 12-bit PND limit (max 914 glyph slots).
+    // The current build uses fixed resident slots. A runtime resolver is needed
+    // before the complete repertoire can exceed that resident budget.
     let mut char_freq: HashMap<char, usize> = HashMap::new();
     for entry in &all_entries_flat {
         for token in &entry.tokens {
@@ -631,19 +784,46 @@ fn build_stage_allocate(
     }
 
     // Sort new_glyph_chars by frequency (highest first) so the most-used
-    // chars get slots and rare chars overflow gracefully.
+    // chars get slots; the product build rejects an incomplete assignment.
     new_glyph_chars.sort_by(|a, b| {
-        char_freq.get(b).unwrap_or(&0).cmp(&char_freq.get(a).unwrap_or(&0))
+        char_freq
+            .get(b)
+            .unwrap_or(&0)
+            .cmp(&char_freq.get(a).unwrap_or(&0))
     });
+
+    if shared_tiles {
+        let mut char_table = original_tile_map;
+        anyhow::ensure!(new_glyph_chars.len() * 4 + ss_madou::font::shared_tiles::VIRTUAL_START as usize <= 0xfeff,
+            "shared font codes overlap controls");
+        for (i, &ch) in new_glyph_chars.iter().enumerate() {
+            char_table.insert(ch, ss_madou::font::shared_tiles::VIRTUAL_START + i as u16 * 4);
+        }
+        let markers_start = new_glyph_chars.len();
+        for (i, (marker, ..)) in ss_madou::font::shared_tiles::JOSA_MARKERS.iter().enumerate() {
+            char_table.insert(
+                *marker,
+                ss_madou::font::shared_tiles::VIRTUAL_START + ((markers_start + i) * 4) as u16,
+            );
+        }
+        return Ok(AllocResult {
+            shared_tiles: true,
+            assigned_count: new_glyph_chars.len(),
+            new_glyph_chars, char_table, unassigned: vec![], sec6_reclaimed: 0,
+            max_glyph_used: 843, text_char_count: text_chars.len(),
+        });
+    }
 
     // Build unavailable-slot set: preserved slots only.
     let unavailable = preserve.clone();
 
     // Assign glyph slots within VDP2-safe range (slots 0-913).
-    // Chars that don't fit are returned as `unassigned` and will render
-    // as blank spaces (FALLBACK_TILE) in-game.
+    // Chars that do not fit are returned as `unassigned`; cmd_build_rom rejects
+    // them before loading or modifying the disc.
     let (mut char_table, mut unassigned) = patcher::build_char_table_safe(
-        &new_glyph_chars, &unavailable, patcher::MAX_VDP2_GLYPH_INDEX,
+        &new_glyph_chars,
+        &unavailable,
+        patcher::MAX_VDP2_GLYPH_INDEX,
     );
     // Merge preserved icon tiles back into char_table.
     char_table.extend(original_tile_map.iter().map(|(&ch, &tc)| (ch, tc)));
@@ -669,7 +849,8 @@ fn build_stage_allocate(
     let assigned_count = new_glyph_chars.len() - unassigned.len();
 
     // Compute the max glyph index used (for FONT.CEL sizing).
-    let max_glyph_used = char_table.values()
+    let max_glyph_used = char_table
+        .values()
         .filter(|&&tc| tc >= GLYPH_TILE_START as u16)
         .map(|&tc| ((tc as usize) - GLYPH_TILE_START) / TILES_PER_GLYPH)
         .max()
@@ -677,12 +858,15 @@ fn build_stage_allocate(
 
     println!(
         "Glyph slots assigned: {} / {} ({} sec6 reclaimed) = {} total (max index {})",
-        assigned_count, new_glyph_chars.len(), sec6_reclaimed,
-        char_table.len(), max_glyph_used
+        assigned_count,
+        new_glyph_chars.len(),
+        sec6_reclaimed,
+        char_table.len(),
+        max_glyph_used
     );
     if !unassigned.is_empty() {
         println!(
-            "  {} chars unassigned (VDP2 12-bit limit, will render as blank):",
+            "  {} chars unassigned by the current fixed-slot layout:",
             unassigned.len()
         );
         // Show first 20 unassigned chars with their frequency
@@ -696,6 +880,7 @@ fn build_stage_allocate(
     }
 
     Ok(AllocResult {
+        shared_tiles: false,
         char_table,
         new_glyph_chars,
         unassigned,
@@ -714,6 +899,18 @@ fn build_stage_font(
     font_path: &Path,
     font_size: f32,
 ) -> Result<()> {
+    if alloc.shared_tiles {
+        pipeline::render_sec6_glyphs(font_ctx, font_path, font_size)?;
+        let glyphs = pipeline::generate_korean_glyphs(font_path, &alloc.new_glyph_chars, font_size)?;
+        let packed = ss_madou::font::shared_tiles::pack(&font_ctx.font_cel, &glyphs)?;
+        for (ch, code) in &packed.char_table {
+            anyhow::ensure!(alloc.char_table.get(ch) == Some(code), "shared font allocation differs");
+        }
+        println!("Shared font: {} glyphs, {} unique tiles, {} bytes; every glyph reconstructs exactly",
+            glyphs.len(), packed.unique_tiles, packed.bytes.len());
+        font_ctx.font_cel = packed.bytes;
+        return pipeline::patch_font(ctx, font_ctx, &[], &alloc.char_table);
+    }
     // Extend FONT.CEL to fit all VDP2-safe glyph slots (0-913).
     // The decompression buffer is relocated from 0x0607CC60 (Work RAM High,
     // overlaps BSS) to 0x002C0000 (Work RAM Low, 256 KB free during boot).
@@ -722,18 +919,25 @@ fn build_stage_font(
     if required_size > font_ctx.font_cel.len() {
         println!(
             "Extending FONT.CEL: {} → {} bytes ({} → {} glyphs)",
-            font_ctx.font_cel.len(), required_size,
-            844, alloc.max_glyph_used + 1
+            font_ctx.font_cel.len(),
+            required_size,
+            844,
+            alloc.max_glyph_used + 1
         );
         font_ctx.font_cel.resize(required_size, 0);
     }
 
     // Re-render sec6 characters (digits, punctuation, Latin) with Korean font.
-    println!("Re-rendering sec6 characters with {}...", font_path.display());
+    println!(
+        "Re-rendering sec6 characters with {}...",
+        font_path.display()
+    );
     pipeline::render_sec6_glyphs(font_ctx, font_path, font_size)?;
 
     // Generate and patch Korean glyphs (sec7 + sec6 reclaimed, skip unassigned).
-    let assigned_chars: Vec<char> = alloc.new_glyph_chars.iter()
+    let assigned_chars: Vec<char> = alloc
+        .new_glyph_chars
+        .iter()
         .filter(|c| alloc.char_table.contains_key(c))
         .copied()
         .collect();
@@ -742,7 +946,8 @@ fn build_stage_font(
 
     println!(
         "Patched {} glyphs ({} sec6 reclaimed)",
-        glyph_tiles.len(), alloc.sec6_reclaimed
+        glyph_tiles.len(),
+        alloc.sec6_reclaimed
     );
 
     Ok(())
@@ -772,9 +977,15 @@ fn build_stage_seq(
         except_seq.to_vec()
     };
     print!("\nPatching SEQ files...");
-    if skip_seq { print!(" (SKIPPED)"); }
-    if !only_seq.is_empty() { print!(" (ONLY matching {:?})", only_seq); }
-    if !except_seq.is_empty() { print!(" (EXCEPT matching {:?})", except_seq); }
+    if skip_seq {
+        print!(" (SKIPPED)");
+    }
+    if !only_seq.is_empty() {
+        print!(" (ONLY matching {:?})", only_seq);
+    }
+    if !except_seq.is_empty() {
+        print!(" (EXCEPT matching {:?})", except_seq);
+    }
     println!();
 
     let mut result = SeqPatchResult {
@@ -791,29 +1002,41 @@ fn build_stage_seq(
 
         for source in &sorted_sources {
             if SEQ_SKIP_LIST.iter().any(|s| source.eq_ignore_ascii_case(s)) {
-                println!("  {} → SKIPPED (menu/data structure, no pointer support)", source);
+                println!(
+                    "  {} → SKIPPED (menu/data structure, no pointer support)",
+                    source
+                );
                 result.seqs_skipped += 1;
                 continue;
             }
             if !only_seq.is_empty() {
                 let src_upper = source.to_ascii_uppercase();
-                if !only_seq.iter().any(|pat| src_upper.contains(&pat.to_ascii_uppercase())) {
+                if !only_seq
+                    .iter()
+                    .any(|pat| src_upper.contains(&pat.to_ascii_uppercase()))
+                {
                     result.seqs_skipped += 1;
                     continue;
                 }
             }
             if !except_seq.is_empty() {
                 let src_upper = source.to_ascii_uppercase();
-                if except_seq.iter().any(|pat| src_upper.contains(&pat.to_ascii_uppercase())) {
+                if except_seq
+                    .iter()
+                    .any(|pat| src_upper.contains(&pat.to_ascii_uppercase()))
+                {
                     result.seqs_skipped += 1;
                     continue;
                 }
             }
             let entries = &all_patch_entries[source];
-            let (ptrs_fixed, relocated, new_decomp_size) = pipeline::patch_seq(ctx, source, entries, char_table, patch_opts)?;
+            let (ptrs_fixed, relocated, new_decomp_size) =
+                pipeline::patch_seq(ctx, source, entries, char_table, patch_opts)?;
             result.seqs_patched += 1;
             result.total_ptrs_fixed += ptrs_fixed;
-            if relocated { result.seqs_relocated += 1; }
+            if relocated {
+                result.seqs_relocated += 1;
+            }
             if new_decomp_size > 0 {
                 result.seq_new_sizes.push((source.clone(), new_decomp_size));
             }
@@ -837,6 +1060,12 @@ fn build_stage_finalize(
     battle_ui_font_size: f32,
     menu_tab_font: Option<&Path>,
     menu_tab_font_size: f32,
+    levelup_font: Option<&Path>,
+    levelup_font_size: f32,
+    title_logo_master: Option<&Path>,
+    title_copyright_font: Option<&Path>,
+    flea_marker_font: Option<&Path>,
+    credits_font: Option<&Path>,
 ) -> Result<()> {
     // Patch 1ST_READ.BIN: relocate decompression buffer + update descriptor size
     // + update SEQ decompressed size table.
@@ -849,12 +1078,13 @@ fn build_stage_finalize(
         println!("  (SKIP_SEQ_SIZES: skipping SEQ size table update in 1ST_READ.BIN)");
         Vec::new()
     } else {
-        seq_result.seq_new_sizes
+        seq_result
+            .seq_new_sizes
             .iter()
             .map(|(name, size)| (name.as_str(), *size))
             .collect()
     };
-    pipeline::patch_first_read_combined(ctx, descriptor_size, &seq_sizes_ref)?;
+    pipeline::patch_first_read_with_shared_tiles(ctx, descriptor_size, &seq_sizes_ref, alloc.shared_tiles)?;
 
     // Patch prologue sprite (OP_SP02.SPR) if font is provided.
     if let Some(pf) = prologue_font {
@@ -868,7 +1098,34 @@ fn build_stage_finalize(
         battle_ui_font_size,
         menu_tab_font,
         menu_tab_font_size,
+        levelup_font,
+        levelup_font_size,
     )?;
+
+    // Patch TITLELOG.SPR after TITLE.SEQ reaches its final compressed form so
+    // the palette source can be verified against the finished disc state.
+    if let Some(master) = title_logo_master {
+        pipeline::patch_title_logo(ctx, master)?;
+    }
+
+    // Patch the small VDP1 copyright sprite after the title logo. This keeps
+    // its original six-cell allocation and the SEGA company pixels intact.
+    if let Some(font) = title_copyright_font {
+        pipeline::patch_title_copyright(ctx, font)?;
+    }
+
+    // Replace the flea location marker graphics (battle and field).
+    if let Some(font) = flea_marker_font {
+        pipeline::patch_flea_marker(ctx, font)?;
+    }
+
+    // Translate Puyo Card win/loss letters with their original animation.
+    pipeline::patch_card_results(ctx, Path::new("assets/fonts/DNFBitBitv2.ttf"))?;
+
+    // Translate ending staff-roll headings, roles, and character names.
+    if let Some(font) = credits_font {
+        pipeline::patch_ending_credits(ctx, font)?;
+    }
 
     // Save (includes EDC/ECC regeneration).
     pipeline::save_disc(ctx, output)?;
@@ -877,6 +1134,27 @@ fn build_stage_finalize(
     let bps_path = output.with_extension("bps");
     let original_bin = fs::read(rom).context("Failed to read original ROM for BPS")?;
     let patched_bin = fs::read(output).context("Failed to read patched ROM for BPS")?;
+    if alloc.shared_tiles {
+        use sha2::{Digest, Sha256};
+        let delivered = pipeline::load_disc(output)?;
+        let delivered_font = pipeline::extract_font(&delivered)?;
+        anyhow::ensure!(delivered_font.font_cel == font_ctx.font_cel,
+            "Shared FONT.CEL differs after final disc write");
+        let mapping: std::collections::BTreeMap<_, _> = alloc.char_table.iter()
+            .map(|(&ch, &code)| (ch.to_string(), format!("{code:04X}"))).collect();
+        let report = serde_json::json!({
+            "mode": "experimental-shared-font-tiles",
+            "runtime_coverage": "build validation does not imply runtime coverage",
+            "original_bin_sha256": format!("{:x}", Sha256::digest(&original_bin)),
+            "output_bin_sha256": format!("{:x}", Sha256::digest(&patched_bin)),
+            "font_sha256": format!("{:x}", Sha256::digest(&font_ctx.font_cel)),
+            "font_bytes": font_ctx.font_cel.len(), "final_font_readback": true,
+            "virtual_start": ss_madou::font::shared_tiles::VIRTUAL_START,
+            "map_offset": ss_madou::font::shared_tiles::MAP_OFFSET,
+            "characters": mapping,
+        });
+        fs::write(output.with_extension("font.json"), serde_json::to_vec_pretty(&report)?)?;
+    }
     let bps_patch = ss_madou::disc::bps::generate_bps(&original_bin, &patched_bin);
     fs::write(&bps_path, &bps_patch).context("Failed to write BPS patch")?;
     println!(
@@ -888,8 +1166,16 @@ fn build_stage_finalize(
     // Summary.
     let cue_path = output.with_extension("cue");
     println!("\n=== Build Summary ===");
-    println!("  Text characters: {} (all rendered with Korean font)", alloc.text_char_count);
-    println!("  Glyph slots: {} assigned + {} unassigned (max index {})", alloc.assigned_count, alloc.unassigned.len(), alloc.max_glyph_used);
+    println!(
+        "  Text characters: {} (generated font + preserved original characters)",
+        alloc.text_char_count
+    );
+    println!(
+        "  Glyph slots: {} assigned + {} unassigned (max index {})",
+        alloc.assigned_count,
+        alloc.unassigned.len(),
+        alloc.max_glyph_used
+    );
     println!("  FONT.CEL: {} bytes decompressed", font_ctx.font_cel.len());
     println!("  Decompression buffer: relocated to 0x002C0000 (Work RAM Low)");
     println!("  SEQ files patched: {}", seq_result.seqs_patched);
@@ -900,7 +1186,10 @@ fn build_stage_finalize(
     println!("  Pointers fixed: {}", seq_result.total_ptrs_fixed);
     println!("  SEQ sizes updated: {}", seq_result.seq_new_sizes.len());
     println!("  BPS patch: {} bytes", bps_patch.len());
-    println!("\nTo test: load {} in a Saturn emulator", cue_path.display());
+    println!(
+        "\nTo test: load {} in a Saturn emulator",
+        cue_path.display()
+    );
 
     Ok(())
 }
@@ -910,6 +1199,7 @@ fn build_stage_finalize(
 // ---------------------------------------------------------------------------
 
 pub(crate) fn cmd_build_rom(
+    shared_font_tiles: bool,
     rom: &Path,
     font_path: &Path,
     output: &Path,
@@ -928,19 +1218,34 @@ pub(crate) fn cmd_build_rom(
     battle_ui_font_size: f32,
     menu_tab_font: Option<&Path>,
     menu_tab_font_size: f32,
+    levelup_font: Option<&Path>,
+    levelup_font_size: f32,
+    title_logo_master: Option<&Path>,
+    title_copyright_font: Option<&Path>,
+    flea_marker_font: Option<&Path>,
+    credits_font: Option<&Path>,
 ) -> Result<()> {
     // Build patch options from CLI flags, falling back to env vars.
     let mut patch_opts = patcher::PatchOptions::from_env();
-    if dump_seq { patch_opts.dump_seq = true; }
-    if dump_ptrs { patch_opts.dump_ptrs = true; }
-    if skip_common_ptrs { patch_opts.skip_common_ptrs = true; }
-    if skip_script_ptrs { patch_opts.skip_script_ptrs = true; }
+    if dump_seq {
+        patch_opts.dump_seq = true;
+    }
+    if dump_ptrs {
+        patch_opts.dump_ptrs = true;
+    }
+    if skip_common_ptrs {
+        patch_opts.skip_common_ptrs = true;
+    }
+    if skip_script_ptrs {
+        patch_opts.skip_script_ptrs = true;
+    }
 
     // Ensure output directory exists.
     if let Some(parent) = output.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create output directory: {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create output directory: {}", parent.display())
+            })?;
         }
     }
 
@@ -954,7 +1259,9 @@ pub(crate) fn cmd_build_rom(
     }
     println!(
         "  {} SEQ sources, {} total entries, {} translated",
-        scan.seq_groups.len(), scan.total_entries, scan.total_translated
+        scan.seq_groups.len(),
+        scan.total_entries,
+        scan.total_translated
     );
 
     // 2. Overflow check — warn but don't block.
@@ -968,7 +1275,16 @@ pub(crate) fn cmd_build_rom(
     );
 
     // 3. Allocate glyph slots.
-    let alloc = build_stage_allocate(&all_patch_entries)?;
+    let alloc = build_stage_allocate(&all_patch_entries, shared_font_tiles)?;
+    anyhow::ensure!(
+        alloc.unassigned.is_empty(),
+        "Glyph allocation incomplete: {} of {} required characters have no fixed resident slot. \
+         No ROM was written. The experimental --shared-font-tiles build supports resident tile sharing. \
+         Missing characters must not be replaced \
+         with spaces. Run check-glyphs --verbose for the fixed-layout list.",
+        alloc.unassigned.len(),
+        alloc.text_char_count
+    );
 
     // 4. Load ROM + patch font.
     let mut ctx = pipeline::load_disc(rom)?;
@@ -977,18 +1293,49 @@ pub(crate) fn cmd_build_rom(
 
     // 5. Patch SEQ files.
     let seq_result = build_stage_seq(
-        &mut ctx, &all_patch_entries, &alloc.char_table, &patch_opts,
-        skip_seq, only_seq, except_seq,
+        &mut ctx,
+        &all_patch_entries,
+        &alloc.char_table,
+        &patch_opts,
+        skip_seq,
+        only_seq,
+        except_seq,
     )?;
 
     // 6. Finalize (1ST_READ, prologue, battle UI, save, BPS, summary).
     build_stage_finalize(
-        &mut ctx, &font_ctx, &alloc, &seq_result,
-        rom, output, prologue_font, prologue_font_size,
-        battle_ui_font, battle_ui_font_size,
-        menu_tab_font, menu_tab_font_size,
+        &mut ctx,
+        &font_ctx,
+        &alloc,
+        &seq_result,
+        rom,
+        output,
+        prologue_font,
+        prologue_font_size,
+        battle_ui_font,
+        battle_ui_font_size,
+        menu_tab_font,
+        menu_tab_font_size,
+        levelup_font,
+        levelup_font_size,
+        title_logo_master,
+        title_copyright_font,
+        flea_marker_font,
+        credits_font,
     )?;
+
+    if shared_font_tiles {
+        use sha2::{Digest, Sha256};
+        let path = output.with_extension("font.json");
+        let mut report: serde_json::Value = serde_json::from_slice(&fs::read(&path)?)?;
+        let inputs: Vec<_> = scan.json_paths.iter().map(|p| {
+            Ok(serde_json::json!({"path":p,"sha256":format!("{:x}",Sha256::digest(fs::read(p)?))}))
+        }).collect::<Result<_>>()?;
+        report["translation_inputs"] = serde_json::json!(inputs);
+        report["font_source"] = serde_json::json!({"path":font_path,"size_px":font_size,
+            "sha256":format!("{:x}",Sha256::digest(fs::read(font_path)?))});
+        fs::write(path, serde_json::to_vec_pretty(&report)?)?;
+    }
 
     Ok(())
 }
-

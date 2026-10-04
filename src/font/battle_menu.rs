@@ -24,6 +24,9 @@ const TEXT_THRESHOLD: u8 = 60;
 const SEL_TEXT_ZONE: (usize, usize, usize, usize) = (4, 5, 35, 15);
 /// Text rendering zone within unselected tab.
 const UNSEL_TEXT_ZONE: (usize, usize, usize, usize) = (4, 3, 35, 11);
+/// Unselected tabs sit partly under the selected tab to their left, so the
+/// Korean label is drawn this many pixels right of the zone's center.
+const UNSEL_TEXT_SHIFT_X: usize = 2;
 
 /// Menu tab definitions: (sel_offset, unsel_offset, jp_label, ko_label).
 /// Each tab pair is 800 bytes apart (400 sel + 280 unsel + 120 gap).
@@ -193,6 +196,7 @@ fn patch_tab_variant(
     rows: usize,
     text_idx: u8,
     zone: (usize, usize, usize, usize),
+    shift_x: usize,
     ko_text: &str,
 ) {
     let sprite_bytes = BYTES_PER_ROW * rows;
@@ -217,8 +221,8 @@ fn patch_tab_variant(
         for x in 0..tw {
             if mask[y][x] >= TEXT_THRESHOLD {
                 let ny = y + y1;
-                let nx = x + x1;
-                if ny < rows && nx < TAB_WIDTH {
+                let nx = x + x1 + shift_x;
+                if ny < rows && nx <= x2 {
                     grid[ny][nx] = text_idx;
                 }
             }
@@ -243,6 +247,7 @@ pub fn patch_menu_tabs(spr_data: &mut [u8], font: &Font, font_size: f32) -> usiz
             SEL_ROWS,
             SEL_TEXT_IDX,
             SEL_TEXT_ZONE,
+            0,
             ko,
         );
         patch_tab_variant(
@@ -253,6 +258,7 @@ pub fn patch_menu_tabs(spr_data: &mut [u8], font: &Font, font_size: f32) -> usiz
             UNSEL_ROWS,
             UNSEL_TEXT_IDX,
             UNSEL_TEXT_ZONE,
+            UNSEL_TEXT_SHIFT_X,
             ko,
         );
         count += 1;
@@ -286,11 +292,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires assets/fonts/Galmuri9.ttf"]
     fn test_render_text_mask_nonempty() {
-        let font_data = match std::fs::read("assets/fonts/Galmuri9.ttf") {
-            Ok(d) => d,
-            Err(_) => return,
-        };
+        let font_data = crate::test_input::read("assets/fonts/Galmuri9.ttf");
         let font = fontdue::Font::from_bytes(
             font_data.as_slice(),
             fontdue::FontSettings::default(),
@@ -321,13 +325,10 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires assets/fonts/Galmuri9.ttf and out/dec/SYSTEM.SPR"]
     fn test_patch_modifies_data() {
-        let spr_data_result = std::fs::read("out/dec/SYSTEM.SPR");
-        let font_data_result = std::fs::read("assets/fonts/Galmuri9.ttf");
-        let (mut spr_data, font_data) = match (spr_data_result, font_data_result) {
-            (Ok(s), Ok(f)) => (s, f),
-            _ => return,
-        };
+        let mut spr_data = crate::test_input::read("out/dec/SYSTEM.SPR");
+        let font_data = crate::test_input::read("assets/fonts/Galmuri9.ttf");
         let font = fontdue::Font::from_bytes(
             font_data.as_slice(),
             fontdue::FontSettings::default(),

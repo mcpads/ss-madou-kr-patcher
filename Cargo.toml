@@ -1,6 +1,6 @@
 [package]
 name = "ss_madou"
-version = "0.1.0"
+version = "2.0.0-rc.0"
 edition = "2024"
 
 [dependencies]
@@ -15,3 +15,5 @@ md5 = "0.7"
 fontdue = "0.9"
 regex = "1"
 crc32fast = "1"
+sha2 = "0.10"
+sh2-asm = { package = "sh2", git = "https://github.com/mcpads/retro-typed-isa", rev = "9b31c628465cb83a633445de7d39e985be184cb7" }

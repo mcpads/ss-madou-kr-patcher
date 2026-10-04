@@ -3,6 +3,7 @@ use std::collections::{HashSet, VecDeque};
 use super::address::{AddressSpace, VAddr};
 use super::analysis::{AnalysisDb, XRef, XRefKind};
 use super::linear::DisasmLine;
+use super::literal_pool::read_literal_pool_value;
 use crate::sh2::{self, FlowKind, InstructionKind, Reg};
 
 /// Recursive (control-flow-following) disassembler.
@@ -107,17 +108,17 @@ impl<'a> RecursiveDisassembler<'a> {
 
             let branch_target = inst.branch_target(pc);
             let literal_pool_addr = inst.literal_pool_addr(pc);
-            let literal_pool_value = literal_pool_addr.and_then(|a| self.space.read_u32_be(a));
+            let literal_pool_value = read_literal_pool_value(self.space, &inst, pc);
 
             // Record literal pool reference.
             if let Some(pool_addr) = literal_pool_addr {
+                self.db.add_xref(XRef {
+                    from: pc,
+                    to: pool_addr,
+                    kind: XRefKind::LiteralPoolRef,
+                });
                 if let Some(value) = literal_pool_value {
                     self.db.mark_literal_pool(pool_addr, value);
-                    self.db.add_xref(XRef {
-                        from: pc,
-                        to: pool_addr,
-                        kind: XRefKind::LiteralPoolRef,
-                    });
 
                     // If the literal pool value looks like a code address, record indirect ref.
                     if is_plausible_code_addr(value) {
@@ -258,16 +259,16 @@ impl<'a> RecursiveDisassembler<'a> {
             self.db.mark_code(delay_pc);
 
             let literal_pool_addr = inst.literal_pool_addr(delay_pc);
-            let literal_pool_value = literal_pool_addr.and_then(|a| self.space.read_u32_be(a));
+            let literal_pool_value = read_literal_pool_value(self.space, &inst, delay_pc);
 
             if let Some(pool_addr) = literal_pool_addr {
+                self.db.add_xref(XRef {
+                    from: delay_pc,
+                    to: pool_addr,
+                    kind: XRefKind::LiteralPoolRef,
+                });
                 if let Some(value) = literal_pool_value {
                     self.db.mark_literal_pool(pool_addr, value);
-                    self.db.add_xref(XRef {
-                        from: delay_pc,
-                        to: pool_addr,
-                        kind: XRefKind::LiteralPoolRef,
-                    });
                 }
             }
 

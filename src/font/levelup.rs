@@ -472,15 +472,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires out/dec/SYSTEM.SPR from decompress-all"]
     fn test_burst_extraction_preserves_shape() {
         // Read real SYSTEM.SPR if available
-        let spr_data = match std::fs::read("out/dec/SYSTEM.SPR") {
-            Ok(d) => d,
-            Err(_) => return,
-        };
-        if spr_data.len() < OFFSET + NBYTES {
-            return;
-        }
+        let spr_data = crate::test_input::read("out/dec/SYSTEM.SPR");
+        assert!(spr_data.len() >= OFFSET + NBYTES, "SYSTEM.SPR is too short");
 
         let orig = decode_4bpp(&spr_data[OFFSET..OFFSET + NBYTES]);
         let burst = extract_burst_layer(&orig);
@@ -506,21 +502,16 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires assets/fonts/MaplestoryBold.ttf and out/dec/SYSTEM.SPR"]
     fn test_render_levelup_produces_output() {
-        let font_data = match std::fs::read("assets/fonts/MaplestoryBold.ttf") {
-            Ok(d) => d,
-            Err(_) => return,
-        };
+        let font_data = crate::test_input::read("assets/fonts/MaplestoryBold.ttf");
         let font = fontdue::Font::from_bytes(
             font_data.as_slice(),
             fontdue::FontSettings::default(),
         )
         .unwrap();
 
-        let spr_data = match std::fs::read("out/dec/SYSTEM.SPR") {
-            Ok(d) => d,
-            Err(_) => return,
-        };
+        let spr_data = crate::test_input::read("out/dec/SYSTEM.SPR");
 
         let result = render_levelup_sprite(&spr_data, &font, 13.0);
         assert!(result.is_some(), "Should produce output");

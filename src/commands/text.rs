@@ -237,6 +237,27 @@ pub(crate) fn cmd_check_overflow(
                         v.entry_id, v.source, line_count, limit
                     );
                 }
+                overflow::ViolationKind::ChoiceLineOverflow {
+                    option_index,
+                    char_count,
+                    jp_max_width,
+                    line_text,
+                } => {
+                    println!(
+                        "  [CHOICE] {} ({}): option {} -- {} chars (JP max width {})",
+                        v.entry_id, v.source, option_index + 1, char_count, jp_max_width
+                    );
+                    println!("           \"{}\"", line_text);
+                }
+                overflow::ViolationKind::ChoiceOptionCountMismatch {
+                    ko_count,
+                    jp_count,
+                } => {
+                    println!(
+                        "  [CHOICE-COUNT] {} ({}): KO {} options vs JP {} options",
+                        v.entry_id, v.source, ko_count, jp_count
+                    );
+                }
             }
         }
     }

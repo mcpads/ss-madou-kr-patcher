@@ -244,3 +244,132 @@ fn wide_tag_high_decimal_value() {
     assert_eq!(lines[0].char_count, 5); // 테스트 + □ + 끝
     assert_eq!(lines[0].text, "테스트□끝");
 }
+
+// --- 선택지(choice) 오버플로우 검사 테스트 ---
+
+#[test]
+fn is_choice_entry_ff1b() {
+    // FF1B 종료형 선택지
+    let text = " 싸운다{ctrl:FF02} 그만둔다{ctrl:FF02}{ctrl:FF1B:00C2}";
+    assert!(is_choice_entry(text));
+}
+
+#[test]
+fn is_choice_entry_ff0b() {
+    // FF0B 포함형 선택지
+    let text = "{ctrl:FF0B:0000:0000:0A0A} 좋아{ctrl:FF02} 그만둘래{ctrl:FF02}{ctrl:FF1B:20C2}";
+    assert!(is_choice_entry(text));
+}
+
+#[test]
+fn is_choice_entry_regular_dialogue() {
+    // 일반 대화 (선택지 아님)
+    let text = "{ctrl:FF30:0008:0000:0349}안녕하세요{ctrl:FF02}반갑습니다{ctrl:FF02}{ctrl:FF05}";
+    assert!(!is_choice_entry(text));
+}
+
+#[test]
+fn choice_no_violation_when_ko_shorter() {
+    // KO 옵션이 JP보다 짧거나 같으면 위반 없음
+    let jp = " やってやるぜ{ctrl:FF02} 戦わない{ctrl:FF02}{ctrl:FF1B:00C2}";
+    let ko = " 해 주지{ctrl:FF02} 안 싸워{ctrl:FF02}{ctrl:FF1B:00C2}";
+    let violations = check_choice_entry("TEST_0001", "TEST.SEQ", ko, Some(jp));
+    assert!(violations.is_empty());
+}
+
+#[test]
+fn choice_violation_when_ko_exceeds_jp_max() {
+    // KO 옵션이 JP 최대 폭 초과 → ChoiceLineOverflow
+    let jp = " はい{ctrl:FF02} いいえ{ctrl:FF02}{ctrl:FF1B:00C2}";
+    // JP max = 4 ("いいえ" + space = 4 chars)
+    let ko = " 네{ctrl:FF02} 아니오입니다{ctrl:FF02}{ctrl:FF1B:00C2}";
+    // KO opt 2 = 7 chars > JP max 4
+    let violations = check_choice_entry("TEST_0001", "TEST.SEQ", ko, Some(jp));
+    assert_eq!(violations.len(), 1);
+    assert!(matches!(
+        &violations[0].kind,
+        ViolationKind::ChoiceLineOverflow {
+            option_index: 1,
+            char_count: 7,
+            jp_max_width: 4,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn choice_violation_multiple_options_exceed() {
+    // 여러 KO 옵션이 JP 최대 폭 초과
+    let jp = " 戦う{ctrl:FF02} やめる{ctrl:FF02}{ctrl:FF1B:00C2}";
+    // JP max = 4 (" やめる" = 4 chars)
+    let ko = " 전투를 시작한다{ctrl:FF02} 도망가겠습니다{ctrl:FF02}{ctrl:FF1B:00C2}";
+    // KO opt 1 = 9, opt 2 = 8 → both > 4
+    let violations = check_choice_entry("TEST_0001", "TEST.SEQ", ko, Some(jp));
+    assert_eq!(violations.len(), 2);
+    assert!(violations.iter().all(|v| matches!(
+        &v.kind,
+        ViolationKind::ChoiceLineOverflow { .. }
+    )));
+}
+
+#[test]
+fn choice_option_count_mismatch() {
+    // KO 옵션 수 ≠ JP 옵션 수
+    let jp = " はい{ctrl:FF02} いいえ{ctrl:FF02}{ctrl:FF1B:00C2}";
+    let ko = " 네{ctrl:FF02} 아니오{ctrl:FF02} 모르겠어{ctrl:FF02}{ctrl:FF1B:00C2}";
+    let violations = check_choice_entry("TEST_0001", "TEST.SEQ", ko, Some(jp));
+    assert!(violations.iter().any(|v| matches!(
+        &v.kind,
+        ViolationKind::ChoiceOptionCountMismatch { ko_count: 3, jp_count: 2 }
+    )));
+}
+
+#[test]
+fn choice_ff0b_extraction() {
+    // FF0B 엔트리에서 옵션 추출
+    let jp = "{ctrl:FF0B:0000:0000}切 やすむ{ctrl:FF02} 日記を見る{ctrl:FF02} セーブする{ctrl:FF02} やめる{ctrl:FF02}{ctrl:FF1B:20C4}";
+    let ko = "{ctrl:FF0B:0000:0000:0A0A} 쉬기{ctrl:FF02} 일기 보기{ctrl:FF02} 세이브하기{ctrl:FF02} 그만두기{ctrl:FF02}{ctrl:FF1B:20C4}";
+    let violations = check_choice_entry("COMMON_0028", "COMMON.SEQ", ko, Some(jp));
+    // JP max = "切 やすむ" = 5 or "日記を見る" = 6 → 6
+    // KO max = "세이브하기" = 6 → no overflow
+    assert!(violations.is_empty());
+}
+
+#[test]
+fn choice_with_ff00_separators() {
+    // FF00 구분자가 포함된 선택지
+    let jp = "{ctrl:FF00} 「呪い」って なあに?{ctrl:FF02}{ctrl:FF00} これから どうするの?{ctrl:FF02}{ctrl:FF00} おまえは ダレなんだ!?{ctrl:FF02}{ctrl:FF1B:2043}";
+    let ko = "{ctrl:FF00} 「저주」가 뭐야?{ctrl:FF02}{ctrl:FF00} 이제 어떻게 할거야?{ctrl:FF02}{ctrl:FF00} 넌 누구야!?{ctrl:FF02}{ctrl:FF1B:2043}";
+    let violations = check_choice_entry("MP0303A_0007", "MP0303A.SEQ", ko, Some(jp));
+    // JP max: " 「呪い」って なあに?" = 12, " これから どうするの?" = 11, " おまえは ダレなんだ!?" = 12 → 12
+    // KO: " 「저주」가 뭐야?" = 10, " 이제 어떻게 할거야?" = 12, " 넌 누구야!?" = 7 → no overflow
+    assert!(violations.is_empty());
+}
+
+#[test]
+fn choice_with_ff00_overflow() {
+    // FF00 구분자 + 오버플로우
+    let jp = "{ctrl:FF00} 「呪い」って なあに?{ctrl:FF02}{ctrl:FF00} 名前について{ctrl:FF02}{ctrl:FF1B:2043}";
+    // JP max: " 「呪い」って なあに?" = 12, " 名前について" = 7 → 12
+    let ko = "{ctrl:FF00} 「저주」가 뭐야?{ctrl:FF02}{ctrl:FF00} 이름에 대해서 자세히 알려줘{ctrl:FF02}{ctrl:FF1B:2043}";
+    // KO: " 「저주」가 뭐야?" = 10 OK, " 이름에 대해서 자세히 알려줘" = 16 > 12
+    let violations = check_choice_entry("TEST_0001", "TEST.SEQ", ko, Some(jp));
+    assert_eq!(violations.len(), 1);
+    assert!(matches!(
+        &violations[0].kind,
+        ViolationKind::ChoiceLineOverflow {
+            option_index: 1,
+            char_count: 16,
+            jp_max_width: 12,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn choice_no_jp_returns_empty() {
+    // JP 정보 없으면 선택지 검사 스킵
+    let ko = " 네{ctrl:FF02} 아니오{ctrl:FF02}{ctrl:FF1B:00C2}";
+    let violations = check_choice_entry("TEST_0001", "TEST.SEQ", ko, None);
+    assert!(violations.is_empty());
+}

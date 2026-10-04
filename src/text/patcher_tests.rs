@@ -139,6 +139,41 @@ fn apply_patches_grow() {
 // -- MP pointer fixing ------------------------------------------------
 
 #[test]
+fn mp_question_table_relocates_each_label() {
+    let mut data = vec![0u8; 0x80];
+    data[0..4].copy_from_slice(&[0, 0x24, 0, 0x64]);
+    data[4..8].copy_from_slice(&[0, 0x24, 0, 0x68]);
+    data[0x60..0x6c].copy_from_slice(&[
+        0x01, 0xB6, 0xFF, 0x00, 0x01, 0xBA, 0xFF, 0x00,
+        0x01, 0xB6, 0xFF, 0x00]);
+    // The first label grows, so both later label pointers must move even
+    // though they target the interior of one translation entry.
+    let entries = vec![entry(0x60, 12, vec![
+        TextToken::Text("가가가".into()), TextToken::Ctrl(0xFF00),
+        TextToken::Text("나".into()), TextToken::Ctrl(0xFF00),
+        TextToken::Text("가".into()), TextToken::Ctrl(0xFF00)])];
+    let (patched, count) = apply_patches(&data, &entries, &make_char_table(),
+        SeqType::Mp, &PatchOptions::default()).unwrap();
+    assert_eq!(&patched[0..8], &[0, 0x24, 0, 0x68, 0, 0x24, 0, 0x6c]);
+    assert_eq!(count, 2);
+    assert_eq!(&patched[0x68..0x6c], &[0x01, 0xBA, 0xFF, 0x00]);
+}
+
+#[test]
+fn choice_alignment_padding_precedes_parameterized_terminator() {
+    // A shortened option still needs two bytes of alignment. The next
+    // script command must remain immediately after FF1B's parameter.
+    let data = [0x01, 0xB6, 0x01, 0xBA, 0xFF, 0x02, 0xFF, 0x1B, 0x20, 0x43,
+                0xFF, 0x0F, 0x37, 0x34];
+    let entries = vec![entry(0, 10, vec![TextToken::Text("가".into()),
+        TextToken::Ctrl(0xFF02), TextToken::Ctrl(0xFF1B), TextToken::Ctrl(0x2043)])];
+    let (patched, _) = apply_patches(&data, &entries, &make_char_table(),
+        SeqType::Mp, &PatchOptions::default()).unwrap();
+    assert_eq!(patched, [0x01, 0xB6, 0x00, 0xB2, 0xFF, 0x02, 0xFF, 0x1B,
+        0x20, 0x43, 0xFF, 0x0F, 0x37, 0x34, 0, 0]);
+}
+
+#[test]
 fn fix_pointers_adjusts_shifted_targets() {
     let mut data = vec![0x00u8; 0x28];
     data[0] = 0x00;
@@ -1124,4 +1159,3 @@ fn apply_patches_rejects_overlapping_entries() {
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("Overlapping"), "Expected overlap error, got: {}", msg);
 }
-

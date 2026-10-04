@@ -1,4 +1,5 @@
 use super::address::{AddressSpace, VAddr};
+use super::literal_pool::read_literal_pool_value;
 use crate::sh2::{self, Instruction};
 
 /// A single disassembled line.
@@ -14,7 +15,7 @@ pub struct DisasmLine {
     pub branch_target: Option<VAddr>,
     /// Literal pool reference address, if applicable.
     pub literal_pool_addr: Option<VAddr>,
-    /// 32-bit value read from the literal pool, if applicable.
+    /// Register value loaded from the literal pool, including MOV.W sign extension.
     pub literal_pool_value: Option<u32>,
 }
 
@@ -31,7 +32,7 @@ pub fn disassemble_linear(space: &AddressSpace, start: VAddr, end: VAddr) -> Vec
 
         let branch_target = inst.branch_target(pc);
         let literal_pool_addr = inst.literal_pool_addr(pc);
-        let literal_pool_value = literal_pool_addr.and_then(|a| space.read_u32_be(a));
+        let literal_pool_value = read_literal_pool_value(space, &inst, pc);
 
         lines.push(DisasmLine {
             addr: pc,

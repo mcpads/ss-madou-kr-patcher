@@ -49,6 +49,32 @@ fn linear_disasm_literal_pool() {
 }
 
 #[test]
+fn word_literal_uses_only_its_two_bytes_and_sign_extends() {
+    for (word, expected) in [(0x0FFFu16, 0x0000_0FFF), (0x8000, 0xFFFF_8000)] {
+        // MOV.W @(0,PC),R3; NOP; word literal; unrelated next word.
+        let [hi, lo] = word.to_be_bytes();
+        let space = make_test_space(0x1000, &[0x93, 0, 0, 9, hi, lo, 0, 0x80]);
+        let lines = disassemble_linear(&space, 0x1000, 0x1002);
+        assert_eq!(lines[0].literal_pool_value, Some(expected));
+    }
+}
+
+#[test]
+fn word_literal_at_region_end_is_readable() {
+    let space = make_test_space(0x1000, &[0x93, 0, 0, 9, 0x0F, 0xFF]);
+    let lines = disassemble_linear(&space, 0x1000, 0x1002);
+    assert_eq!(lines[0].literal_pool_value, Some(0x0FFF));
+}
+
+#[test]
+fn mova_references_an_address_without_loading_its_contents() {
+    let space = make_test_space(0x1000, &[0xC7, 0, 0, 9, 0xDE, 0xAD, 0xBE, 0xEF]);
+    let lines = disassemble_linear(&space, 0x1000, 0x1002);
+    assert_eq!(lines[0].literal_pool_addr, Some(0x1004));
+    assert_eq!(lines[0].literal_pool_value, None);
+}
+
+#[test]
 fn linear_disasm_stops_at_end() {
     let data = [0x00, 0x09]; // single NOP
     let space = make_test_space(0x1000, &data);

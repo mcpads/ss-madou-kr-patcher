@@ -176,7 +176,7 @@ fn compress_preserves_header() {
 // Task 3: ROM integration tests
 
 #[test]
-#[ignore]
+#[ignore = "requires roms/Madou_Monogatari_JAP.bin"]
 fn decompress_real_seq_file() {
     use crate::disc::{DiscImage, Iso9660};
     use std::path::Path;
@@ -191,7 +191,7 @@ fn decompress_real_seq_file() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "requires roms/Madou_Monogatari_JAP.bin"]
 fn decompress_real_font_file() {
     use crate::disc::{DiscImage, Iso9660};
     use std::path::Path;
@@ -207,7 +207,7 @@ fn decompress_real_font_file() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "requires roms/Madou_Monogatari_JAP.bin"]
 fn compress_roundtrip_real_font_cel() {
     use crate::disc::{DiscImage, Iso9660};
     use std::path::Path;
@@ -246,7 +246,7 @@ fn compress_roundtrip_real_font_cel() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "requires roms/Madou_Monogatari_JAP.bin"]
 fn compress_roundtrip_common_seq() {
     use crate::disc::{DiscImage, Iso9660};
     use std::path::Path;
@@ -297,7 +297,7 @@ fn compress_roundtrip_common_seq() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "requires roms/Madou_Monogatari_JAP.bin"]
 fn decompress_all_seq_files() {
     use crate::disc::{DiscImage, Iso9660};
     use std::path::Path;

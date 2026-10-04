@@ -193,11 +193,9 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires assets/fonts/dalmoori.ttf"]
     fn test_render_battle_tile_dimensions() {
-        let font_data = match std::fs::read("assets/fonts/dalmoori.ttf") {
-            Ok(d) => d,
-            Err(_) => return, // skip when font not available
-        };
+        let font_data = crate::test_input::read("assets/fonts/dalmoori.ttf");
         let font = fontdue::Font::from_bytes(
             font_data.as_slice(),
             fontdue::FontSettings::default(),

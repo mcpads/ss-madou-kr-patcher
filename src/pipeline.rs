@@ -44,7 +44,7 @@ pub struct FontCtx {
 /// - Otherwise (grew but same sector count), write in place and update ISO file size.
 ///
 /// Returns `true` if the file was relocated, `false` if written in place.
-fn write_compressed_file(
+pub fn write_compressed_file(
     ctx: &mut DiscCtx,
     filename: &str,
     lba: u32,
@@ -85,14 +85,10 @@ fn write_compressed_file(
 /// Load a ROM disc image and parse ISO 9660.
 pub fn load_disc(rom: &Path) -> Result<DiscCtx> {
     println!("Loading ROM: {}", rom.display());
-    let disc =
-        crate::disc::DiscImage::from_bin_file(rom).context("Failed to open disc image")?;
+    let disc = crate::disc::DiscImage::from_bin_file(rom).context("Failed to open disc image")?;
     let iso = Iso9660::parse(&disc).context("Failed to parse ISO 9660")?;
     let tracked = TrackedDisc::new(disc);
-    Ok(DiscCtx {
-        disc: tracked,
-        iso,
-    })
+    Ok(DiscCtx { disc: tracked, iso })
 }
 
 /// Extract and decompress FONT.CEL from the disc.
@@ -151,25 +147,47 @@ pub fn generate_korean_glyphs(
 /// Excludes reclaimable slots (、, 。, ", D, Q, U, V, W, Y, Z, h, ヴ) and
 /// bottom-half-only refs (I, J, X).
 const SEC6_RENDER_CHARS: &[(char, usize)] = &[
-    ('0', 182), ('1', 186), ('2', 190), ('3', 194),
-    ('4', 198), ('5', 202), ('6', 206), ('7', 210),
-    ('8', 214), ('9', 218),
-    ('-', 222), ('\u{00B7}', 226), // · Middle Dot (원본 tile = ・)
-    ('!', 230), ('?', 234),
+    ('0', 182),
+    ('1', 186),
+    ('2', 190),
+    ('3', 194),
+    ('4', 198),
+    ('5', 202),
+    ('6', 206),
+    ('7', 210),
+    ('8', 214),
+    ('9', 218),
+    ('-', 222),
+    ('\u{00B7}', 226), // · Middle Dot (원본 tile = ・)
+    ('!', 230),
+    ('?', 234),
     ('\u{2190}', 250), // ← Arrow Left
     ('\u{300C}', 254), // 「 Corner Bracket Left
     ('\u{300D}', 258), // 」 Corner Bracket Right
-    ('A', 262), ('B', 266), ('C', 270),
-    ('E', 278), ('F', 282), ('G', 286),
-    ('H', 290), ('K', 302), ('L', 306),
-    ('M', 310), ('N', 314), ('O', 318),
-    ('P', 322), ('R', 330), ('S', 334),
+    ('A', 262),
+    ('B', 266),
+    ('C', 270),
+    ('E', 278),
+    ('F', 282),
+    ('G', 286),
+    ('H', 290),
+    ('K', 302),
+    ('L', 306),
+    ('M', 310),
+    ('N', 314),
+    ('O', 318),
+    ('P', 322),
+    ('R', 330),
+    ('S', 334),
     ('T', 338),
     ('~', 370),
     ('\u{2605}', 382), // ★ Star
     ('\u{2026}', 386), // … Ellipsis
-    ('(', 390), (')', 394),
-    ('&', 398), ('/', 402), ('%', 406),
+    ('(', 390),
+    (')', 394),
+    ('&', 398),
+    ('/', 402),
+    ('%', 406),
     ('\u{2192}', 410), // → Arrow Right
     ('\u{2191}', 414), // ↑ Arrow Up
     ('\u{266A}', 418), // ♪ Music Note
@@ -216,13 +234,11 @@ pub fn sec6_direct_tile_map() -> HashMap<char, u16> {
 ///
 /// Overwrites the original JP glyphs in FONT.CEL tiles 178–437 so that
 /// digits, punctuation, and Latin letters match the Korean font visually.
-pub fn render_sec6_glyphs(
-    font_ctx: &mut FontCtx,
-    font_path: &Path,
-    font_size: f32,
-) -> Result<()> {
-    let ttf_data = std::fs::read(font_path)
-        .context(format!("Failed to read font for sec6: {}", font_path.display()))?;
+pub fn render_sec6_glyphs(font_ctx: &mut FontCtx, font_path: &Path, font_size: f32) -> Result<()> {
+    let ttf_data = std::fs::read(font_path).context(format!(
+        "Failed to read font for sec6: {}",
+        font_path.display()
+    ))?;
     let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
 
     let mut rendered = 0usize;
@@ -232,11 +248,16 @@ pub fn render_sec6_glyphs(
         if coverage.iter().all(|&b| b == 0) {
             continue;
         }
-        let tiles = korean::coverage_to_4bpp_tiles_with_mode(&coverage, korean::RenderMode::Outline);
+        let tiles =
+            korean::coverage_to_4bpp_tiles_with_mode(&coverage, korean::RenderMode::Outline);
         korean::patch_font_cel_at_tile(&mut font_ctx.font_cel, first_tile, &tiles)?;
         rendered += 1;
     }
-    println!("  Sec6 re-rendered: {}/{} characters", rendered, SEC6_RENDER_CHARS.len());
+    println!(
+        "  Sec6 re-rendered: {}/{} characters",
+        rendered,
+        SEC6_RENDER_CHARS.len()
+    );
 
     Ok(())
 }
@@ -263,8 +284,7 @@ pub fn patch_font(
             korean::patch_font_cel_at_tile(&mut font_ctx.font_cel, slot as usize, tile_data)?;
         } else {
             // Sec7 glyph slot.
-            let glyph_idx =
-                ((slot as usize) - korean::GLYPH_TILE_START) / korean::TILES_PER_GLYPH;
+            let glyph_idx = ((slot as usize) - korean::GLYPH_TILE_START) / korean::TILES_PER_GLYPH;
             korean::patch_font_cel(&mut font_ctx.font_cel, glyph_idx, tile_data)?;
         }
     }
@@ -278,8 +298,7 @@ pub fn patch_font(
         compressed.len()
     );
 
-    let original_sectors =
-        (font_ctx.original_compressed_len + USER_DATA_SIZE - 1) / USER_DATA_SIZE;
+    let original_sectors = (font_ctx.original_compressed_len + USER_DATA_SIZE - 1) / USER_DATA_SIZE;
     let new_sectors = (compressed.len() + USER_DATA_SIZE - 1) / USER_DATA_SIZE;
 
     let relocated = write_compressed_file(
@@ -305,7 +324,9 @@ pub fn patch_font(
     } else {
         println!(
             "  Wrote FONT.CEL in place at LBA {} (ISO size updated: {} → {})",
-            font_ctx.original_lba, font_ctx.original_compressed_len, compressed.len()
+            font_ctx.original_lba,
+            font_ctx.original_compressed_len,
+            compressed.len()
         );
     }
 
@@ -398,6 +419,15 @@ pub fn patch_first_read_combined(
     new_decompressed_size: usize,
     seq_sizes: &[(&str, usize)],
 ) -> Result<()> {
+    patch_first_read_with_shared_tiles(ctx, new_decompressed_size, seq_sizes, false)
+}
+
+pub fn patch_first_read_with_shared_tiles(
+    ctx: &mut DiscCtx,
+    new_decompressed_size: usize,
+    seq_sizes: &[(&str, usize)],
+    shared_tiles: bool,
+) -> Result<()> {
     const FIRST_READ_NAME: &str = "0";
     const FONT_BUFSIZE_OFFSET: usize = 0x035DF4;
     const OLD_BUFFER_ADDR: [u8; 4] = [0x06, 0x07, 0xCC, 0x60];
@@ -432,13 +462,14 @@ pub fn patch_first_read_combined(
             data[offset..offset + 4] == OLD_BUFFER_ADDR,
             "Expected 0x0607CC60 at 1ST_READ.BIN+0x{:06X}, found {:02X}{:02X}{:02X}{:02X}",
             offset,
-            data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
         );
         data[offset..offset + 4].copy_from_slice(&NEW_BUFFER_ADDR);
     }
-    println!(
-        "Patched 1ST_READ.BIN: decompression buffer 0x0607CC60 → 0x002C0000 (Work RAM Low)"
-    );
+    println!("Patched 1ST_READ.BIN: decompression buffer 0x0607CC60 → 0x002C0000 (Work RAM Low)");
 
     // --- Patch 2: FONT.CEL descriptor buffer size ---
     let original_bufsize = u32::from_be_bytes([
@@ -454,8 +485,7 @@ pub fn patch_first_read_combined(
         original_bufsize
     );
     let new_bufsize = new_decompressed_size as u32;
-    data[FONT_BUFSIZE_OFFSET..FONT_BUFSIZE_OFFSET + 4]
-        .copy_from_slice(&new_bufsize.to_be_bytes());
+    data[FONT_BUFSIZE_OFFSET..FONT_BUFSIZE_OFFSET + 4].copy_from_slice(&new_bufsize.to_be_bytes());
     println!(
         "Patched 1ST_READ.BIN: FONT.CEL buffer size {} → {} bytes",
         original_bufsize, new_bufsize
@@ -503,8 +533,7 @@ pub fn patch_first_read_combined(
                     ]);
                     let new_size_u32 = new_size as u32;
                     if old_size != new_size_u32 {
-                        data[size_off..size_off + 4]
-                            .copy_from_slice(&new_size_u32.to_be_bytes());
+                        data[size_off..size_off + 4].copy_from_slice(&new_size_u32.to_be_bytes());
                         println!(
                             "  SEQ size table: {} {} → {} bytes ({:+})",
                             entry_name,
@@ -523,6 +552,11 @@ pub fn patch_first_read_combined(
             sizes_updated
         );
     }
+
+    if shared_tiles {
+        crate::font::shared_tiles::patch_pnd_writer(&mut data)?;
+    }
+    crate::font::action_name_centering::patch(&mut data)?;
 
     // --- Write once ---
     ctx.disc
@@ -552,17 +586,12 @@ pub fn save_disc(ctx: &mut DiscCtx, output: &Path) -> Result<()> {
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent).context("Failed to create output directory")?;
     }
-    ctx.disc
-        .save(output)
-        .context("Failed to save disc image")?;
+    ctx.disc.save(output).context("Failed to save disc image")?;
     println!("\nPatched ROM saved to: {}", output.display());
 
     // Generate CUE file.
     let cue_path = output.with_extension("cue");
-    let bin_filename = output
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy();
+    let bin_filename = output.file_name().unwrap_or_default().to_string_lossy();
     let cue_content = format!(
         "FILE \"{}\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n  TRACK 02 AUDIO\n    INDEX 01 12:44:18\n",
         bin_filename
@@ -570,6 +599,392 @@ pub fn save_disc(ctx: &mut DiscCtx, output: &Path) -> Result<()> {
     std::fs::write(&cue_path, &cue_content).context("Failed to write CUE file")?;
     println!("CUE file saved to: {}", cue_path.display());
 
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Title logo patch (TITLELOG.SPR)
+// ---------------------------------------------------------------------------
+
+/// Compile the admitted Korean title master and patch `TITLELOG.SPR`.
+///
+/// On disc the file is CNX-compressed. Its decompressed texture is a fixed-size,
+/// headerless 296x120 linear 8bpp surface. The palette remains in `TITLE.SEQ`;
+/// both the JP texture and the live palette source are verified before the
+/// replacement is recompressed and written.
+pub fn patch_title_logo(ctx: &mut DiscCtx, master_path: &Path) -> Result<()> {
+    use crate::font::title_logo;
+
+    const SPR_NAME: &str = "TITLELOG.SPR";
+    const SEQ_NAME: &str = "TITLE.SEQ";
+
+    println!("\nPatching title logo ({SPR_NAME})...");
+
+    let spr_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), SPR_NAME)?
+        .context(format!("{SPR_NAME} not found on disc"))?;
+    let original_compressed = ctx.iso.extract_file(ctx.disc.disc(), &spr_entry)?;
+    let original_header = compression::parse_header(&original_compressed)
+        .context("Failed to parse TITLELOG.SPR CNX header")?;
+    let original = compression::decompress(&original_compressed)
+        .context("Failed to decompress TITLELOG.SPR")?;
+    title_logo::verify_original_sprite(&original).map_err(anyhow::Error::msg)?;
+
+    let seq_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), SEQ_NAME)?
+        .context(format!("{SEQ_NAME} not found on disc"))?;
+    let seq_compressed = ctx.iso.extract_file(ctx.disc.disc(), &seq_entry)?;
+    let seq = compression::decompress(&seq_compressed)
+        .context(format!("Failed to decompress {SEQ_NAME} for title palette"))?;
+    let palette_end = title_logo::TITLE_SEQ_PALETTE_OFFSET + title_logo::PALETTE_BYTES;
+    let palette = seq
+        .get(title_logo::TITLE_SEQ_PALETTE_OFFSET..palette_end)
+        .context("TITLE.SEQ is too short for the title palette")?;
+
+    let master = std::fs::read(master_path).with_context(|| {
+        format!(
+            "Failed to read title-logo master: {}",
+            master_path.display()
+        )
+    })?;
+    let compiled = title_logo::compile(&master, palette).map_err(anyhow::Error::msg)?;
+    if compiled.len() != original.len() {
+        anyhow::bail!(
+            "compiled {SPR_NAME} is {} bytes, expected {}",
+            compiled.len(),
+            original.len()
+        );
+    }
+
+    let compressed = compression::compress(&compiled, &original_header.subtype);
+    let verify = compression::decompress(&compressed)
+        .context("Failed to verify recompressed TITLELOG.SPR")?;
+    if verify != compiled {
+        anyhow::bail!("TITLELOG.SPR CNX round-trip verification failed");
+    }
+
+    let relocated = write_compressed_file(
+        ctx,
+        SPR_NAME,
+        spr_entry.lba,
+        original_compressed.len(),
+        &compressed,
+        "TITLELOG.SPR:korean-title",
+    )?;
+    let written_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), SPR_NAME)?
+        .context(format!("{SPR_NAME} disappeared after write"))?;
+    let written_compressed = ctx
+        .iso
+        .extract_file(ctx.disc.disc(), &written_entry)
+        .context("Failed to read back TITLELOG.SPR")?;
+    let written = compression::decompress(&written_compressed)
+        .context("Failed to decompress written TITLELOG.SPR")?;
+    if written != compiled {
+        anyhow::bail!("TITLELOG.SPR disc read-back verification failed");
+    }
+
+    println!("  Master: {}", master_path.display());
+    println!(
+        "  Rendered: {}x{} 8bpp -> {} raw bytes",
+        title_logo::SPRITE_WIDTH,
+        title_logo::SPRITE_HEIGHT,
+        compiled.len()
+    );
+    println!("  Palette: TITLE.SEQ+0x41B0 (CRAM 0x100..0x1FF)");
+    println!("  Raw SHA-256: {}", title_logo::sha256_hex(&compiled));
+    println!(
+        "  CNX: {} -> {} bytes; round-trip and disc read-back: PASS",
+        compiled.len(),
+        compressed.len()
+    );
+    if relocated {
+        println!("  Relocated {SPR_NAME} to LBA {}", written_entry.lba);
+    } else {
+        println!("  Wrote {SPR_NAME} in place at LBA {}", spr_entry.lba);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Title character-copyright patch (COMPILE.SPR)
+// ---------------------------------------------------------------------------
+
+/// Replace only the Japanese `キャラクター` prefix in `COMPILE.SPR`.
+///
+/// The complete Japanese region, including the final long-vowel pixels, is
+/// removed. Native 9x9 Galmuri9 bodies plus one-pixel black outlines replace
+/// it, and the unchanged `©SEGA ENTERPRISES,LTD.` pixels move with the Korean
+/// label so the shortened lower line retains the original visual center.
+pub fn patch_title_copyright(ctx: &mut DiscCtx, font_path: &Path) -> Result<()> {
+    use crate::font::title_copyright;
+
+    const SPR_NAME: &str = "COMPILE.SPR";
+
+    println!("\nPatching title character copyright ({SPR_NAME})...");
+
+    let spr_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), SPR_NAME)?
+        .context(format!("{SPR_NAME} not found on disc"))?;
+    let original_compressed = ctx.iso.extract_file(ctx.disc.disc(), &spr_entry)?;
+    let original_header = compression::parse_header(&original_compressed)
+        .context("Failed to parse COMPILE.SPR CNX header")?;
+    let original = compression::decompress(&original_compressed)
+        .context("Failed to decompress COMPILE.SPR")?;
+
+    let font_bytes = std::fs::read(font_path)
+        .with_context(|| format!("Failed to read Galmuri9: {}", font_path.display()))?;
+    let compiled = title_copyright::compile(&original, &font_bytes).map_err(anyhow::Error::msg)?;
+
+    let compressed = compression::compress(&compiled, &original_header.subtype);
+    let verify = compression::decompress(&compressed)
+        .context("Failed to verify recompressed COMPILE.SPR")?;
+    if verify != compiled {
+        anyhow::bail!("COMPILE.SPR CNX round-trip verification failed");
+    }
+
+    let relocated = write_compressed_file(
+        ctx,
+        SPR_NAME,
+        spr_entry.lba,
+        original_compressed.len(),
+        &compressed,
+        "COMPILE.SPR:korean-character-copyright",
+    )?;
+    let written_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), SPR_NAME)?
+        .context(format!("{SPR_NAME} disappeared after write"))?;
+    let written_compressed = ctx
+        .iso
+        .extract_file(ctx.disc.disc(), &written_entry)
+        .context("Failed to read back COMPILE.SPR")?;
+    let written = compression::decompress(&written_compressed)
+        .context("Failed to decompress written COMPILE.SPR")?;
+    if written != compiled {
+        anyhow::bail!("COMPILE.SPR disc read-back verification failed");
+    }
+
+    println!(
+        "  Font: {} (Galmuri9, native 9px + 1px black outline)",
+        font_path.display()
+    );
+    println!("  Layout: centered [캐릭터][©SEGA ENTERPRISES,LTD.]");
+    println!(
+        "  Rendered: {}x{} 4bpp + {}-byte LUT -> {} raw bytes",
+        title_copyright::SPRITE_WIDTH,
+        title_copyright::SPRITE_HEIGHT,
+        title_copyright::PALETTE_BYTES,
+        compiled.len()
+    );
+    println!("  Raw SHA-256: {}", title_copyright::sha256_hex(&compiled));
+    println!(
+        "  CNX: {} -> {} bytes; round-trip and disc read-back: PASS",
+        compiled.len(),
+        compressed.len()
+    );
+    if relocated {
+        println!("  Relocated {SPR_NAME} to LBA {}", written_entry.lba);
+    } else {
+        println!("  Wrote {SPR_NAME} in place at LBA {}", spr_entry.lba);
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Flea markers and battle captions (B_NOMIA0/1.SPR, FNOMI01/02.SPR)
+// ---------------------------------------------------------------------------
+
+/// Replace only the four Puyo Card result letter cells; retain animation data.
+pub fn patch_card_results(ctx: &mut DiscCtx, font_path: &Path) -> Result<()> {
+    const NAME: &str = "P_CARD01.SPR";
+    let entry = ctx.iso.find_file(ctx.disc.disc(), NAME)?.context("P_CARD01.SPR missing")?;
+    let packed = ctx.iso.extract_file(ctx.disc.disc(), &entry)?;
+    let header = compression::parse_header(&packed)?;
+    let original = compression::decompress(&packed)?;
+    let compiled = crate::font::card_results::compile(&original, &std::fs::read(font_path)?)
+        .map_err(anyhow::Error::msg)?;
+    let compressed = compression::compress(&compiled, &header.subtype);
+    anyhow::ensure!(compression::decompress(&compressed)? == compiled, "card result CNX round trip failed");
+    write_compressed_file(ctx, NAME, entry.lba, packed.len(), &compressed, "P_CARD01.SPR:korean-results")?;
+    let written = ctx.iso.find_file(ctx.disc.disc(), NAME)?.context("P_CARD01.SPR disappeared")?;
+    anyhow::ensure!(compression::decompress(&ctx.iso.extract_file(ctx.disc.disc(), &written)?)? == compiled,
+        "card result disc read-back failed");
+    println!("  P_CARD01.SPR: 승리! / 패배; four letter cells, original animation and exclamation retained");
+    Ok(())
+}
+
+/// Replace flea markers and audited battle captions with Korean text.
+pub fn patch_flea_marker(ctx: &mut DiscCtx, font_path: &Path) -> Result<()> {
+    use crate::font::flea_marker;
+
+    println!("\nPatching flea location marker...");
+    let font_bytes = std::fs::read(font_path)
+        .with_context(|| format!("Failed to read marker font: {}", font_path.display()))?;
+
+    type Compile = fn(&[u8], &[u8]) -> std::result::Result<Vec<u8>, String>;
+    let battle: [(&str, Compile); 2] = [
+        ("B_NOMIA0.SPR", flea_marker::compile_battle),
+        ("B_NOMIA1.SPR", flea_marker::compile_battle_effects),
+    ];
+    for (name, compile) in battle {
+        let entry = ctx.iso.find_file(ctx.disc.disc(), name)?
+            .context(format!("{name} not found on disc"))?;
+        let original_compressed = ctx.iso.extract_file(ctx.disc.disc(), &entry)?;
+        let header = compression::parse_header(&original_compressed)?;
+        let original = compression::decompress(&original_compressed)?;
+        let compiled = compile(&original, &font_bytes).map_err(anyhow::Error::msg)?;
+        anyhow::ensure!(compiled.len() == original.len(), "{name} size changed");
+        let compressed = compression::compress(&compiled, &header.subtype);
+        anyhow::ensure!(compression::decompress(&compressed)? == compiled,
+            "{name} CNX round-trip verification failed");
+        let relocated = write_compressed_file(ctx, name, entry.lba,
+            original_compressed.len(), &compressed, &format!("{name}:korean-flea-text"))?;
+        let written_entry = ctx.iso.find_file(ctx.disc.disc(), name)?
+            .context(format!("{name} disappeared after write"))?;
+        let written = compression::decompress(&ctx.iso.extract_file(ctx.disc.disc(), &written_entry)?)?;
+        anyhow::ensure!(written == compiled, "{name} disc read-back verification failed");
+        println!("  {name}: Korean marker/reaction text, {} -> {} bytes{}",
+            compiled.len(), compressed.len(), if relocated { ", relocated" } else { ", in place" });
+    }
+
+    let raw: [(&str, Compile, &str); 2] = [
+        ("FNOMI01.SPR", flea_marker::compile_alert_window, flea_marker::ALERT_BOTTOM_LINE),
+        ("FNOMI02.SPR", flea_marker::compile_field_marker, flea_marker::FIELD_BOTTOM_LINE),
+    ];
+    for (name, compile, bottom) in raw {
+        let entry = ctx
+            .iso
+            .find_file(ctx.disc.disc(), name)?
+            .context(format!("{name} not found on disc"))?;
+        let original = ctx.iso.extract_file(ctx.disc.disc(), &entry)?;
+        let compiled = compile(&original, &font_bytes).map_err(anyhow::Error::msg)?;
+        anyhow::ensure!(compiled.len() == original.len(), "{name} size changed");
+        ctx.disc
+            .write_file_at(entry.lba, &compiled, &format!("{name}:korean-flea-marker:inplace"))
+            .context(format!("Failed to write {name}"))?;
+        let written = ctx.iso.extract_file(ctx.disc.disc(), &entry)?;
+        anyhow::ensure!(written == compiled, "{name} disc read-back verification failed");
+        println!(
+            "  {name}: 80x80 RGB555 (mirrored) -> 「{}/{bottom}」, raw in place",
+            flea_marker::TOP_LINE
+        );
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Ending staff roll (ED_STF.SPR)
+// ---------------------------------------------------------------------------
+
+/// Replace ending staff-roll headings, role titles, and character names.
+pub fn patch_ending_credits(ctx: &mut DiscCtx, font_path: &Path) -> Result<()> {
+    use crate::font::ending_credits;
+
+    const SPR_NAME: &str = "ED_STF.SPR";
+    println!("\nPatching ending staff roll ({SPR_NAME})...");
+    let font_bytes = std::fs::read(font_path)
+        .with_context(|| format!("Failed to read credits font: {}", font_path.display()))?;
+    let entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), SPR_NAME)?
+        .context(format!("{SPR_NAME} not found on disc"))?;
+    let original_compressed = ctx.iso.extract_file(ctx.disc.disc(), &entry)?;
+    let header = compression::parse_header(&original_compressed)
+        .context("Failed to parse ED_STF.SPR CNX header")?;
+    let original = compression::decompress(&original_compressed)
+        .context("Failed to decompress ED_STF.SPR")?;
+    let compiled =
+        ending_credits::compile(&original, &font_bytes).map_err(anyhow::Error::msg)?;
+    let compressed = compression::compress(&compiled, &header.subtype);
+    anyhow::ensure!(
+        compression::decompress(&compressed)? == compiled,
+        "ED_STF.SPR CNX round-trip verification failed"
+    );
+    let relocated = write_compressed_file(
+        ctx,
+        SPR_NAME,
+        entry.lba,
+        original_compressed.len(),
+        &compressed,
+        "ED_STF.SPR:korean-credit-titles",
+    )?;
+    let written_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), SPR_NAME)?
+        .context(format!("{SPR_NAME} disappeared after write"))?;
+    let written = compression::decompress(&ctx.iso.extract_file(ctx.disc.disc(), &written_entry)?)
+        .context("Failed to decompress written ED_STF.SPR")?;
+    anyhow::ensure!(written == compiled, "ED_STF.SPR disc read-back verification failed");
+    println!(
+        "  {} strips translated (headings, roles, character names); personal names kept",
+        ending_credits::TRANSLATED_LINES.len()
+    );
+    println!(
+        "  CNX {} -> {} bytes (original {}){}",
+        compiled.len(),
+        compressed.len(),
+        original_compressed.len(),
+        if relocated { ", relocated" } else { ", in place" }
+    );
+
+    // Final copyright screen labels (ED_CR.CEL cells addressed by ED_CR.MAP).
+    const CEL_NAME: &str = "ED_CR.CEL";
+    const MAP_NAME: &str = "ED_CR.MAP";
+    let map_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), MAP_NAME)?
+        .context(format!("{MAP_NAME} not found on disc"))?;
+    let map = compression::decompress(&ctx.iso.extract_file(ctx.disc.disc(), &map_entry)?)
+        .context("Failed to decompress ED_CR.MAP")?;
+    let cel_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), CEL_NAME)?
+        .context(format!("{CEL_NAME} not found on disc"))?;
+    let cel_compressed = ctx.iso.extract_file(ctx.disc.disc(), &cel_entry)?;
+    let cel_header = compression::parse_header(&cel_compressed)
+        .context("Failed to parse ED_CR.CEL CNX header")?;
+    let cel = compression::decompress(&cel_compressed).context("Failed to decompress ED_CR.CEL")?;
+    let cel_compiled = ending_credits::compile_copyright(&cel, &map, &font_bytes)
+        .map_err(anyhow::Error::msg)?;
+    let cel_packed = compression::compress(&cel_compiled, &cel_header.subtype);
+    anyhow::ensure!(
+        compression::decompress(&cel_packed)? == cel_compiled,
+        "ED_CR.CEL CNX round-trip verification failed"
+    );
+    let cel_relocated = write_compressed_file(
+        ctx,
+        CEL_NAME,
+        cel_entry.lba,
+        cel_compressed.len(),
+        &cel_packed,
+        "ED_CR.CEL:korean-copyright-labels",
+    )?;
+    let cel_written_entry = ctx
+        .iso
+        .find_file(ctx.disc.disc(), CEL_NAME)?
+        .context(format!("{CEL_NAME} disappeared after write"))?;
+    let cel_written =
+        compression::decompress(&ctx.iso.extract_file(ctx.disc.disc(), &cel_written_entry)?)
+            .context("Failed to decompress written ED_CR.CEL")?;
+    anyhow::ensure!(cel_written == cel_compiled, "ED_CR.CEL disc read-back verification failed");
+    println!(
+        "  {CEL_NAME}: labels {} -> CNX {} bytes (original {}){}",
+        ending_credits::COPYRIGHT_LABELS
+            .iter()
+            .map(|label| format!("「{}」", label.text))
+            .collect::<Vec<_>>()
+            .join(" "),
+        cel_packed.len(),
+        cel_compressed.len(),
+        if cel_relocated { ", relocated" } else { ", in place" }
+    );
     Ok(())
 }
 
@@ -591,8 +1006,10 @@ pub fn patch_prologue_sprite(
     println!("\nPatching prologue sprite ({})...", SPR_NAME);
 
     // Load prologue font
-    let ttf_data = std::fs::read(prologue_font_path)
-        .context(format!("Failed to read prologue font: {}", prologue_font_path.display()))?;
+    let ttf_data = std::fs::read(prologue_font_path).context(format!(
+        "Failed to read prologue font: {}",
+        prologue_font_path.display()
+    ))?;
     let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
     println!(
         "  Prologue font: {} ({}px)",
@@ -615,9 +1032,7 @@ pub fn patch_prologue_sprite(
         .find_file(ctx.disc.disc(), SPR_NAME)?
         .context(format!("{} not found on disc", SPR_NAME))?;
 
-    let original_compressed = ctx
-        .iso
-        .extract_file(ctx.disc.disc(), &spr_entry)?;
+    let original_compressed = ctx.iso.extract_file(ctx.disc.disc(), &spr_entry)?;
     let original_header = compression::parse_header(&original_compressed)?;
 
     println!(
@@ -706,14 +1121,18 @@ pub fn patch_system_sprite(
     battle_ui_font_size: f32,
     menu_tab_font_path: Option<&Path>,
     menu_tab_font_size: f32,
+    levelup_font_path: Option<&Path>,
+    levelup_font_size: f32,
 ) -> Result<()> {
     use crate::font::battle_menu;
     use crate::font::battle_ui;
+    use crate::font::levelup;
 
     const SPR_NAME: &str = "SYSTEM.SPR";
 
-    // Nothing to do if both are disabled.
-    if battle_ui_font_path.is_none() && menu_tab_font_path.is_none() {
+    // Nothing to do if all are disabled.
+    if battle_ui_font_path.is_none() && menu_tab_font_path.is_none() && levelup_font_path.is_none()
+    {
         return Ok(());
     }
 
@@ -725,9 +1144,7 @@ pub fn patch_system_sprite(
         .find_file(ctx.disc.disc(), SPR_NAME)?
         .context(format!("{} not found on disc", SPR_NAME))?;
 
-    let original_compressed = ctx
-        .iso
-        .extract_file(ctx.disc.disc(), &spr_entry)?;
+    let original_compressed = ctx.iso.extract_file(ctx.disc.disc(), &spr_entry)?;
     let original_header = compression::parse_header(&original_compressed)?;
 
     println!(
@@ -744,26 +1161,53 @@ pub fn patch_system_sprite(
         let ttf_data = std::fs::read(bf)
             .context(format!("Failed to read battle UI font: {}", bf.display()))?;
         let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
-        println!("  Battle UI font: {} ({}px)", bf.display(), battle_ui_font_size);
+        println!(
+            "  Battle UI font: {} ({}px)",
+            bf.display(),
+            battle_ui_font_size
+        );
 
         let count = battle_ui::patch_battle_tiles(&mut spr_data, &font, battle_ui_font_size);
-        println!("  Patched {} battle UI tiles ({} bytes each)", count, battle_ui::TILE_BYTES);
+        println!(
+            "  Patched {} battle UI tiles ({} bytes each)",
+            count,
+            battle_ui::TILE_BYTES
+        );
     }
 
     // Menu tab sprites (アイテム…にげる → 아이템…도망).
     if let Some(mf) = menu_tab_font_path {
-        let ttf_data = std::fs::read(mf)
-            .context(format!("Failed to read menu tab font: {}", mf.display()))?;
+        let ttf_data =
+            std::fs::read(mf).context(format!("Failed to read menu tab font: {}", mf.display()))?;
         let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
-        println!("  Menu tab font: {} ({}px)", mf.display(), menu_tab_font_size);
+        println!(
+            "  Menu tab font: {} ({}px)",
+            mf.display(),
+            menu_tab_font_size
+        );
 
         let count = battle_menu::patch_menu_tabs(&mut spr_data, &font, menu_tab_font_size);
         println!("  Patched {} menu tab pairs (selected + unselected)", count);
     }
 
+    // Level-up sprite (レベルアップ → 레벨업!).
+    if let Some(lf) = levelup_font_path {
+        let ttf_data =
+            std::fs::read(lf).context(format!("Failed to read levelup font: {}", lf.display()))?;
+        let font = korean::load_font(&ttf_data).map_err(|e| anyhow::anyhow!(e))?;
+        println!("  Levelup font: {} ({}px)", lf.display(), levelup_font_size);
+
+        let count = levelup::patch_levelup_sprite(&mut spr_data, &font, levelup_font_size);
+        println!("  Patched {} levelup sprite (56×32 4bpp at 0x64C0)", count);
+    }
+
     // Compress once and write once.
     let compressed = compression::compress(&spr_data, &original_header.subtype);
-    println!("  Compressed: {} -> {} bytes", spr_data.len(), compressed.len());
+    println!(
+        "  Compressed: {} -> {} bytes",
+        spr_data.len(),
+        compressed.len()
+    );
 
     let verify = compression::decompress(&compressed)?;
     if verify == spr_data {
@@ -795,7 +1239,10 @@ pub fn patch_system_sprite(
     } else if compressed.len() <= original_compressed.len() {
         println!(
             "  Wrote {} in place at LBA {} (padded {} → {})",
-            SPR_NAME, spr_entry.lba, compressed.len(), original_compressed.len()
+            SPR_NAME,
+            spr_entry.lba,
+            compressed.len(),
+            original_compressed.len()
         );
     } else {
         println!(

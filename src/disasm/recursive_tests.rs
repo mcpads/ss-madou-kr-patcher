@@ -1,4 +1,15 @@
 use super::*;
+
+#[test]
+fn recursive_word_literal_matches_loaded_register_value() {
+    // MOV.W @(1,PC),R3; RTS; NOP; word literal; unrelated word.
+    let space = make_space(0x1000, &[0x93, 1, 0, 0x0B, 0, 9, 0x0F, 0xFF, 0, 0x80]);
+    let mut disasm = RecursiveDisassembler::new(&space);
+    disasm.add_entry_point(0x1000, None);
+    let db = disasm.run();
+    assert_eq!(db.instructions[&0x1000].literal_pool_value, Some(0x0FFF));
+    assert_eq!(db.literal_pool_values[&0x1006], 0x0FFF);
+}
 use crate::disasm::address::MemoryRegion;
 
 fn make_space(base: VAddr, data: &[u8]) -> AddressSpace {

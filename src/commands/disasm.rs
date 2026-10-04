@@ -217,7 +217,9 @@ pub(crate) fn linear_scan_literal_pool_refs(
         if let Some(opcode) = space.read_u16_be(pc) {
             let inst = ss_madou::sh2::decode(opcode);
             if let Some(pool_addr) = inst.literal_pool_addr(pc) {
-                if let Some(value) = space.read_u32_be(pool_addr) {
+                if let Some(value) =
+                    ss_madou::disasm::literal_pool::read_literal_pool_value(space, &inst, pc)
+                {
                     results.push((pc, pool_addr, value));
                 }
             }
@@ -225,6 +227,23 @@ pub(crate) fn linear_scan_literal_pool_refs(
         pc += 2;
     }
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn literal_search_finds_word_mask_without_combining_adjacent_data() {
+        let mut space = AddressSpace::new();
+        space.add_region(MemoryRegion::new(
+            "word mask",
+            0x1000,
+            vec![0x93, 0, 0, 9, 0x0F, 0xFF, 0, 0x80],
+        ));
+        let refs = linear_scan_literal_pool_refs(&space, 0x1000, 2);
+        assert_eq!(refs, vec![(0x1000, 0x1004, 0x0FFF)]);
+    }
 }
 
 /// Find function start by walking backward from `addr` looking for
@@ -279,9 +298,9 @@ fn cmd_disasm_find_value(
 ) -> Result<()> {
     println!("=== Searching for value 0x{target:08X} ===\n");
 
-    // 1. Raw binary search (finds ALL occurrences including data)
+    // 1. Raw 32-bit search; word literals are also covered by the load scan below.
     let raw_hits = space.find_u32_be(target);
-    println!("Raw binary matches: {} occurrences", raw_hits.len());
+    println!("Raw 32-bit binary matches: {} occurrences", raw_hits.len());
     for addr in &raw_hits {
         let aligned = addr % 4 == 0;
         let file_offset = addr - load_addr;
@@ -297,8 +316,8 @@ fn cmd_disasm_find_value(
         println!();
     }
 
-    // 2. Linear scan: find all MOV.L @(disp,PC) instructions loading this value
-    println!("\nLinear scan for MOV.L @(disp,PC) references...");
+    // 2. Linear scan: find PC-relative word and long loads of this value.
+    println!("\nLinear scan for MOV.W/MOV.L @(disp,PC) references...");
     let matching: Vec<_> = pool_refs
         .iter()
         .filter(|&&(_, _, val)| val == target)
